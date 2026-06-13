@@ -240,11 +240,28 @@ function Login({ onLogin }) {
 }
 
 function App() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('kubox_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const [vista, setVista] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  if (!user) return <Login onLogin={setUser} />;
+  const handleLogin = (userData) => {
+    localStorage.setItem('kubox_user', JSON.stringify(userData));
+    setUser(userData);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('kubox_user');
+    setUser(null);
+  };
+
+  if (!user) return <Login onLogin={handleLogin} />;
 
   const esAdmin = user.rol === 'admin';
   const esConserje = user.rol === 'conserje';
@@ -341,7 +358,7 @@ function App() {
             ))}
           </nav>
           <div className="p-4 border-t border-white/10">
-            <button onClick={() => setUser(null)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/70 hover:bg-white/10 hover:text-white transition ${!sidebarOpen && 'justify-center'}`}>
+            <button onClick={handleLogout} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/70 hover:bg-white/10 hover:text-white transition ${!sidebarOpen && 'justify-center'}`}>
               <LogOut className="w-5 h-5" />
               {sidebarOpen && <span className="font-medium">Salir</span>}
             </button>
