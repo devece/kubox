@@ -523,39 +523,9 @@ app.post('/api/aplicar-garantia', (req, res) => {
 // ============================================
 db.run('ALTER TABLE espacios_comunes ADD COLUMN tiene_juegos_inflables INTEGER DEFAULT 0', (e) => {});
 db.run('ALTER TABLE espacios_comunes ADD COLUMN monto_extra_juegos INTEGER DEFAULT 0', (e) => {});
-// Obtener residente por email
-app.get('/api/residentes/email/:email', (req, res) => {
-    const email = req.params.email;
-    db.get('SELECT * FROM residentes WHERE email = ?', [email], (err, row) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(row);
-    });
-});
 
-// Obtener unidad por residente_id
-app.get('/api/unidades/residente/:residenteId', (req, res) => {
-    const residenteId = req.params.residenteId;
-    db.get('SELECT * FROM unidades WHERE residente_id = ?', [residenteId], (err, row) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(row);
-    });
-});
-
-// Obtener gastos comunes por unidad
-app.get('/api/gastos-comunes/unidad/:unidadId', (req, res) => {
-    const unidadId = req.params.unidadId;
-    const sql = `SELECT gu.*, gc.periodo, gc.concepto, gc.fecha_vencimiento 
-                 FROM gastos_unidad gu 
-                 JOIN gastos_comunes gc ON gc.id = gu.gasto_comun_id 
-                 WHERE gu.unidad_id = ? 
-                 ORDER BY gc.periodo DESC`;
-    db.all(sql, [unidadId], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-    });
-});
 // ============================================
-// RUTAS PARA RESIDENTES (FALTANTES)
+// RUTAS PARA RESIDENTES
 // ============================================
 
 // Obtener residente por email
@@ -577,28 +547,15 @@ app.get('/api/unidades/residente/:residenteId', (req, res) => {
     });
 });
 
-// Obtener gastos por residente (para Mis Gastos)
-app.get('/api/gastos/residente/:email', (req, res) => {
-    const email = req.params.email;
-    db.get('SELECT id FROM residentes WHERE email = ?', [email], (err, residente) => {
-        if (err || !residente) return res.status(404).json({ error: 'Residente no encontrado' });
-        
-        db.all(`SELECT g.* FROM gastos_unidad gu 
-                JOIN gastos_comunes gc ON gc.id = gu.gasto_comun_id
-                JOIN gastos g ON g.id = gc.id? 
-                WHERE gu.unidad_id = (SELECT id FROM unidades WHERE residente_id = ?)
-                ORDER BY g.fecha DESC`, 
-            [residente.id], (err, rows) => {
-                if (err) return res.status(500).json({ error: err.message });
-                res.json(rows || []);
-            });
-    });
-});
-
 // Obtener gastos comunes por unidad
 app.get('/api/gastos-comunes/unidad/:unidadId', (req, res) => {
     const unidadId = req.params.unidadId;
-    db.all('SELECT * FROM gastos_unidad WHERE unidad_id = ? ORDER BY id DESC', [unidadId], (err, rows) => {
+    const sql = `SELECT gu.*, gc.periodo, gc.concepto, gc.fecha_vencimiento
+                 FROM gastos_unidad gu
+                 JOIN gastos_comunes gc ON gc.id = gu.gasto_comun_id
+                 WHERE gu.unidad_id = ?
+                 ORDER BY gc.periodo DESC`;
+    db.all(sql, [unidadId], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows);
     });

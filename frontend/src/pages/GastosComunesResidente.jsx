@@ -114,17 +114,17 @@ function GastosComunesResidente({ residenteEmail }) {
         <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-6 border border-white/20">
           <DollarSign className="w-8 h-8 text-white mb-4" />
           <h3 className="text-white/70 text-sm font-medium">Total Gastos</h3>
-          <p className="text-3xl font-bold text-white mt-1"></p>
+          <p className="text-3xl font-bold text-white mt-1">${total.toLocaleString()}</p>
         </div>
         <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-6 border border-white/20">
           <CheckCircle className="w-8 h-8 text-green-400 mb-4" />
           <h3 className="text-white/70 text-sm font-medium">Total Pagado</h3>
-          <p className="text-3xl font-bold text-white mt-1"></p>
+          <p className="text-3xl font-bold text-white mt-1">${pagado.toLocaleString()}</p>
         </div>
         <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-6 border border-white/20">
           <XCircle className="w-8 h-8 text-red-400 mb-4" />
           <h3 className="text-white/70 text-sm font-medium">Pendiente</h3>
-          <p className="text-3xl font-bold text-white mt-1"></p>
+          <p className="text-3xl font-bold text-white mt-1">${pendiente.toLocaleString()}</p>
         </div>
       </div>
 
@@ -146,7 +146,7 @@ function GastosComunesResidente({ residenteEmail }) {
                 <tr key={g.id} className="text-white/80 hover:bg-white/5 transition">
                   <td className="p-4">{g.periodo || '-'}</td>
                   <td className="p-4">{g.concepto || 'Gastos Comunes'}</td>
-                  <td className="p-4 font-semibold text-green-400"></td>
+                  <td className="p-4 font-semibold text-green-400">${Number(g.monto_total || 0).toLocaleString()}</td>
                   <td className="p-4">
                     <span className={g.pagado === 1 ? 'px-2 py-1 rounded-full text-xs bg-green-500/20 text-green-300' : 'px-2 py-1 rounded-full text-xs bg-red-500/20 text-red-300'}>
                       {g.pagado === 1 ? 'Pagado' : 'Pendiente'}
