@@ -1,0 +1,714 @@
+﻿const express = require('express');
+const cors = require('cors');
+const sqlite3 = require('sqlite3').verbose();
+const bcrypt = require('bcrypt');
+
+const app = express();
+const PORT = 3001;
+
+app.use(cors());
+app.use(express.json());
+
+const db = new sqlite3.Database('./kubox.db');
+
+// ============================================
+// LOGIN
+// ============================================
+app.post('/api/login', (req, res) => {
+    const { email, password } = req.body;
+    db.get('SELECT * FROM usuarios WHERE email = ?', [email], async (err, user) => {
+        if (err || !user) return res.status(401).json({ error: 'Credenciales incorrectas' });
+        const valid = await bcrypt.compare(password, user.password);
+        if (!valid) return res.status(401).json({ error: 'Credenciales incorrectas' });
+        res.json({ id: user.id, email: user.email, rol: user.rol });
+    });
+});
+
+// ============================================
+// DASHBOARD - GRÁFICOS
+// ============================================
+app.get('/api/dashboard-stats', (req, res) => {
+    db.get('SELECT COUNT(*) as total_unidades FROM unidades', (err, row) => {
+        const totalUnidades = row?.total_unidades || 0;
+        
+        db.get('SELECT COUNT(*) as ocupadas FROM unidades WHERE residente_id IS NOT NULL', (err2, row2) => {
+            const ocupadas = row2?.ocupadas || 0;
+            
+            db.get('SELECT COUNT(*) as total_residentes FROM residentes', (err3, row3) => {
+                const totalResidentes = row3?.total_residentes || 0;
+                
+                res.json({ 
+                    total_unidades: totalUnidades,
+                    ocupadas: ocupadas,
+                    total_residentes: totalResidentes,
+                    morosos: 0,
+                    recaudado_mes: 0,
+                    deuda_total: 0,
+                    recaudado_total: 0
+                });
+            });
+        });
+    });
+});
+
+app.get('/api/grafico-gastos-categoria', (req, res) => {
+    db.all(`SELECT categoria, SUM(monto) as total FROM gastos WHERE categoria IS NOT NULL GROUP BY categoria`, (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows || []);
+    });
+});
+
+app.get('/api/grafico-ingresos', (req, res) => {
+    db.all(`SELECT strftime('%Y-%m', fecha) as periodo, SUM(monto) as total_recaudado FROM gastos GROUP BY strftime('%Y-%m', fecha) ORDER BY periodo DESC LIMIT 6`, (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows || []);
+    });
+});
+
+app.get('/api/grafico-morosidad', (req, res) => {
+    db.all(`SELECT 
+                strftime('%Y-%m', gc.fecha_emision) as periodo,
+                SUM(CASE WHEN gu.pagado = 1 THEN 1 ELSE 0 END) as pagados,
+                SUM(CASE WHEN gu.pagado = 0 THEN 1 ELSE 0 END) as morosos 
+            FROM gastos_comunes gc
+            JOIN gastos_unidad gu ON gu.gasto_comun_id = gc.id
+            GROUP BY strftime('%Y-%m', gc.fecha_emision)
+            ORDER BY periodo DESC LIMIT 6`, (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows || []);
+    });
+});
+
+// ============================================
+// GASTOS
+// ============================================
+app.get('/api/gastos', (req, res) => {
+    db.all('SELECT * FROM gastos ORDER BY fecha DESC, id DESC', (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+app.post('/api/gastos', (req, res) => {
+    const { concepto, monto, fecha, categoria, proveedor, es_cuotas, total_cuotas, cuota_actual, monto_cuota } = req.body;
+    db.run(`INSERT INTO gastos (concepto, monto, fecha, categoria, proveedor, es_cuotas, total_cuotas, cuota_actual, monto_cuota) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [concepto, monto, fecha, categoria, proveedor, es_cuotas ? 1 : 0, total_cuotas || 1, cuota_actual || 1, monto_cuota || monto],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ id: this.lastID });
+        });
+});
+
+app.put('/api/gastos/:id', (req, res) => {
+    const { concepto, monto, fecha, categoria, proveedor, es_cuotas, total_cuotas, cuota_actual, monto_cuota } = req.body;
+    db.run(`UPDATE gastos SET concepto = ?, monto = ?, fecha = ?, categoria = ?, proveedor = ?, es_cuotas = ?, total_cuotas = ?, cuota_actual = ?, monto_cuota = ? WHERE id = ?`,
+        [concepto, monto, fecha, categoria, proveedor, es_cuotas ? 1 : 0, total_cuotas || 1, cuota_actual || 1, monto_cuota || monto, req.params.id],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ updated: this.changes });
+        });
+});
+
+app.delete('/api/gastos/:id', (req, res) => {
+    db.run('DELETE FROM gastos WHERE id = ?', [req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ deleted: this.changes });
+    });
+});
+
+// ============================================
+// CATEGORIAS GASTOS
+// ============================================
+app.get('/api/categorias-gastos', (req, res) => {
+    db.all('SELECT * FROM categorias_gastos ORDER BY nombre', (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+// ============================================
+// UNIDADES
+// ============================================
+app.get('/api/unidades', (req, res) => {
+    db.all(`SELECT u.*, r.nombre as residente_nombre 
+            FROM unidades u 
+            LEFT JOIN residentes r ON r.id = u.residente_id`, (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+app.post('/api/unidades', (req, res) => {
+    const { numero, torre, tipo, metros_cuadrados, estacionamiento, bodega, residente_id } = req.body;
+    db.run('INSERT INTO unidades (numero, torre, tipo, metros_cuadrados, estacionamiento, bodega, residente_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [numero, torre, tipo, metros_cuadrados, estacionamiento ? 1 : 0, bodega ? 1 : 0, residente_id],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ id: this.lastID });
+        });
+});
+
+app.put('/api/unidades/:id', (req, res) => {
+    const { numero, torre, tipo, metros_cuadrados, estacionamiento, bodega, residente_id } = req.body;
+    db.run('UPDATE unidades SET numero = ?, torre = ?, tipo = ?, metros_cuadrados = ?, estacionamiento = ?, bodega = ?, residente_id = ? WHERE id = ?',
+        [numero, torre, tipo, metros_cuadrados, estacionamiento ? 1 : 0, bodega ? 1 : 0, residente_id, req.params.id],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ updated: this.changes });
+        });
+});
+
+app.delete('/api/unidades/:id', (req, res) => {
+    db.run('DELETE FROM unidades WHERE id = ?', [req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ deleted: this.changes });
+    });
+});
+
+// ============================================
+// RESIDENTES
+// ============================================
+app.get('/api/residentes', (req, res) => {
+    db.all('SELECT * FROM residentes', (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+app.post('/api/residentes', (req, res) => {
+    const { nombre, email, telefono, condominio_id } = req.body;
+    db.run('INSERT INTO residentes (nombre, email, telefono, condominio_id) VALUES (?, ?, ?, ?)',
+        [nombre, email, telefono, condominio_id || 1],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ id: this.lastID });
+        });
+});
+
+app.put('/api/residentes/:id', (req, res) => {
+    const { nombre, email, telefono } = req.body;
+    db.run('UPDATE residentes SET nombre = ?, email = ?, telefono = ? WHERE id = ?',
+        [nombre, email, telefono, req.params.id],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ updated: this.changes });
+        });
+});
+
+app.delete('/api/residentes/:id', (req, res) => {
+    db.run('DELETE FROM residentes WHERE id = ?', [req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ deleted: this.changes });
+    });
+});
+
+// ============================================
+// ESPACIOS COMUNES
+// ============================================
+app.get('/api/espacios', (req, res) => {
+    db.all('SELECT * FROM espacios_comunes', (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+app.post('/api/espacios', (req, res) => {
+    const { nombre, descripcion, capacidad, requiere_autorizacion, cobro_activo,
+            horario_semana_inicio, horario_semana_fin, horario_festivo_inicio,
+            horario_festivo_fin, costo_dia_semana, costo_dia_festivo, garantia, 
+            tiene_juegos_inflables, monto_extra_juegos, dias_festivos } = req.body;
+
+    const sql = `INSERT INTO espacios_comunes 
+        (nombre, descripcion, capacidad, requiere_autorizacion, cobro_activo,
+         horario_semana_inicio, horario_semana_fin, horario_festivo_inicio,
+         horario_festivo_fin, costo_dia_semana, costo_dia_festivo, garantia, 
+         tiene_juegos_inflables, monto_extra_juegos, dias_festivos, condominio_id) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`;
+
+    db.run(sql, [nombre, descripcion, capacidad, requiere_autorizacion ? 1 : 0, cobro_activo ? 1 : 0,
+         horario_semana_inicio, horario_semana_fin, horario_festivo_inicio, horario_festivo_fin,
+         costo_dia_semana || 0, costo_dia_festivo || 0, garantia || 0,
+         tiene_juegos_inflables ? 1 : 0, monto_extra_juegos || 0, dias_festivos || ''],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ id: this.lastID });
+        });
+});
+
+app.put('/api/espacios/:id', (req, res) => {
+    const { nombre, descripcion, capacidad, requiere_autorizacion, cobro_activo,
+            horario_semana_inicio, horario_semana_fin, horario_festivo_inicio,
+            horario_festivo_fin, costo_dia_semana, costo_dia_festivo, garantia,
+            tiene_juegos_inflables, monto_extra_juegos, dias_festivos } = req.body;
+
+    const sql = `UPDATE espacios_comunes SET 
+            nombre = ?, descripcion = ?, capacidad = ?, requiere_autorizacion = ?, 
+            cobro_activo = ?, horario_semana_inicio = ?, horario_semana_fin = ?,
+            horario_festivo_inicio = ?, horario_festivo_fin = ?, costo_dia_semana = ?,
+            costo_dia_festivo = ?, garantia = ?, tiene_juegos_inflables = ?,
+            monto_extra_juegos = ?, dias_festivos = ?
+            WHERE id = ?`;
+
+    db.run(sql, [nombre, descripcion, capacidad, requiere_autorizacion ? 1 : 0, cobro_activo ? 1 : 0,
+         horario_semana_inicio, horario_semana_fin, horario_festivo_inicio, horario_festivo_fin,
+         costo_dia_semana || 0, costo_dia_festivo || 0, garantia || 0,
+         tiene_juegos_inflables ? 1 : 0, monto_extra_juegos || 0, dias_festivos || '', req.params.id],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ updated: this.changes });
+        });
+});
+
+app.delete('/api/espacios/:id', (req, res) => {
+    db.run('DELETE FROM espacios_comunes WHERE id = ?', [req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ deleted: this.changes });
+    });
+});
+
+// ============================================
+// RESERVAS
+// ============================================
+app.get('/api/reservas', (req, res) => {
+    db.all('SELECT id, espacio_id, fecha, hora_inicio, hora_fin, motivo, unidad_id, estado, costo_total, tiene_extra, monto_extra, garantia_aplicada, check_out FROM reservas ORDER BY fecha DESC', (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+app.post('/api/reservas', (req, res) => {
+    const { espacio_id, fecha, hora_inicio, hora_fin, motivo, unidad_id, costo_total, tiene_extra, monto_extra, estado } = req.body;
+    
+    db.run(`INSERT INTO reservas (espacio_id, fecha, hora_inicio, hora_fin, motivo, unidad_id, costo_total, tiene_extra, monto_extra, estado) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [espacio_id, fecha, hora_inicio, hora_fin, motivo, unidad_id, costo_total || 0, tiene_extra || 0, monto_extra || 0, estado || 'pendiente'],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ id: this.lastID });
+        });
+});
+app.put('/api/reservas/:id', (req, res) => {
+    const { estado, check_out, garantia_aplicada } = req.body;
+    
+    db.get('SELECT unidad_id, costo_total FROM reservas WHERE id = ?', [req.params.id], (err, reserva) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!reserva) return res.status(404).json({ error: 'Reserva no encontrada' });
+        
+        let nuevoCostoTotal = reserva.costo_total;
+        
+        if (garantia_aplicada === 1) {
+            nuevoCostoTotal = reserva.costo_total * 2;
+        }
+        
+        db.run('UPDATE reservas SET estado = ?, check_out = ?, garantia_aplicada = ?, costo_total = ? WHERE id = ?',
+            [estado, check_out, garantia_aplicada || 0, nuevoCostoTotal, req.params.id],
+            function(err) {
+                if (err) return res.status(500).json({ error: err.message });
+                res.json({ updated: this.changes, costo_final: nuevoCostoTotal });
+            });
+    });
+});
+// ============================================
+// GASTOS COMUNES
+// ============================================
+app.get('/api/gastos-periodos', (req, res) => {
+    db.all('SELECT DISTINCT periodo FROM gastos_comunes ORDER BY periodo DESC', (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows.map(r => r.periodo));
+    });
+});
+
+app.get('/api/gastos-comunes/:periodo', (req, res) => {
+    const periodo = decodeURIComponent(req.params.periodo);
+    db.all(`SELECT gu.*, u.numero as unidad_numero, gc.periodo, gc.concepto, gc.fecha_vencimiento
+            FROM gastos_unidad gu
+            JOIN unidades u ON u.id = gu.unidad_id
+            JOIN gastos_comunes gc ON gc.id = gu.gasto_comun_id
+            WHERE gc.periodo = ?
+            ORDER BY u.numero`, 
+        [periodo], (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json(rows);
+        });
+});
+
+app.post('/api/generar-gastos-comunes', (req, res) => {
+    const { periodo, mes, anio } = req.body;
+    
+    const fechaInicio = `${anio}-${String(mes).padStart(2, '0')}-01`;
+    const fechaFin = `${anio}-${String(mes).padStart(2, '0')}-31`;
+    
+    db.get('SELECT SUM(monto_cuota) as total FROM gastos WHERE fecha BETWEEN ? AND ?', [fechaInicio, fechaFin], (err, gastoRow) => {
+        if (err) return res.status(500).json({ error: err.message });
+        
+        let totalGastos = gastoRow.total || 0;
+        
+        db.get('SELECT SUM(costo_total) as total_reservas FROM reservas WHERE fecha BETWEEN ? AND ?', [fechaInicio, fechaFin], (err, reservasRow) => {
+            if (err) return res.status(500).json({ error: err.message });
+            
+            const totalReservas = reservasRow?.total_reservas || 0;
+            totalGastos += totalReservas;
+            
+            // Sumar multas del período (incluyendo garantías)
+            db.get('SELECT SUM(monto) as total_multas FROM multas WHERE fecha BETWEEN ? AND ?', [fechaInicio, fechaFin], (err, multasRow) => {
+                if (err) return res.status(500).json({ error: err.message });
+                
+                const totalMultas = multasRow?.total_multas || 0;
+                totalGastos += totalMultas;
+                
+                if (totalGastos === 0) {
+                    return res.status(400).json({ error: 'No hay gastos, reservas ni multas en el período seleccionado' });
+                }
+                
+                db.all('SELECT id, metros_cuadrados FROM unidades WHERE metros_cuadrados > 0', (err, unidades) => {
+                    if (err || !unidades.length) {
+                        return res.status(500).json({ error: 'No hay unidades con metros cuadrados' });
+                    }
+                    
+                    const totalMetros = unidades.reduce((sum, u) => sum + u.metros_cuadrados, 0);
+                    const fechaEmision = new Date().toISOString().split('T')[0];
+                    const fechaVencimiento = new Date();
+                    fechaVencimiento.setDate(fechaVencimiento.getDate() + 10);
+                    const fechaVencimientoStr = fechaVencimiento.toISOString().split('T')[0];
+                    
+                    db.run(`INSERT INTO gastos_comunes (condominio_id, periodo, concepto, monto_total, fecha_emision, fecha_vencimiento, pagado) 
+                            VALUES (1, ?, 'Gastos Comunes', ?, ?, ?, 0)`,
+                        [periodo, totalGastos, fechaEmision, fechaVencimientoStr],
+                        function(err) {
+                            if (err) return res.status(500).json({ error: err.message });
+                            
+                            const gastoComunId = this.lastID;
+                            let insertados = 0;
+                            
+                            unidades.forEach(unidad => {
+                                const porcentaje = unidad.metros_cuadrados / totalMetros;
+                                const montoUnidad = Math.round(totalGastos * porcentaje);
+                                
+                                db.run(`INSERT INTO gastos_unidad (gasto_comun_id, unidad_id, monto_base, monto_total, pagado) 
+                                        VALUES (?, ?, ?, ?, 0)`,
+                                    [gastoComunId, unidad.id, montoUnidad, montoUnidad],
+                                    (err) => {
+                                        if (err) console.error(err);
+                                        insertados++;
+                                        if (insertados === unidades.length) {
+                                            res.json({ success: true, message: `Cobros generados para ${unidades.length} unidades`, total: totalGastos });
+                                        }
+                                    });
+                            });
+                        });
+                });
+            });
+        });
+    });
+});
+
+app.delete('/api/limpiar-gastos-comunes', (req, res) => {
+    db.run('DELETE FROM gastos_unidad', (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        db.run('DELETE FROM gastos_comunes', (err) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ success: true });
+        });
+    });
+});
+
+app.delete('/api/limpiar-gastos-periodo/:periodo', (req, res) => {
+    const periodo = decodeURIComponent(req.params.periodo);
+    db.run('DELETE FROM gastos_unidad WHERE gasto_comun_id IN (SELECT id FROM gastos_comunes WHERE periodo = ?)', [periodo], (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        db.run('DELETE FROM gastos_comunes WHERE periodo = ?', [periodo], (err) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ success: true });
+        });
+    });
+});
+
+app.post('/api/pagar-gasto-unidad', (req, res) => {
+    const { gasto_unidad_id, fecha_pago } = req.body;
+    db.run('UPDATE gastos_unidad SET pagado = 1, fecha_pago = ? WHERE id = ?', [fecha_pago, gasto_unidad_id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true });
+    });
+});
+
+// ============================================
+// CONSERJERIA
+// ============================================
+app.get('/api/bitacora', (req, res) => {
+    db.all('SELECT * FROM bitacora ORDER BY fecha DESC', (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+app.get('/api/encomiendas', (req, res) => {
+    db.all('SELECT * FROM encomiendas ORDER BY fecha_ingreso DESC', (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+app.get('/api/visitas', (req, res) => {
+    db.all('SELECT * FROM visitas ORDER BY fecha_entrada DESC', (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+// ============================================
+// MANTENIMIENTO
+// ============================================
+app.get('/api/equipos', (req, res) => {
+    db.all('SELECT * FROM equipos WHERE activo = 1', (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+app.get('/api/mantenciones', (req, res) => {
+    db.all('SELECT * FROM mantenciones_programadas ORDER BY fecha_programada ASC', (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+app.post('/api/mantenciones', (req, res) => {
+    const { equipo_id, fecha_programada, descripcion, prioridad, responsable } = req.body;
+    db.run('INSERT INTO mantenciones_programadas (equipo_id, fecha_programada, descripcion, prioridad, estado, responsable) VALUES (?, ?, ?, ?, ?, ?)',
+        [equipo_id, fecha_programada, descripcion || 'Mantención programada', prioridad || 'normal', 'pendiente', responsable || null],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ id: this.lastID });
+        });
+});
+
+app.put('/api/mantenciones/:id', (req, res) => {
+    const { estado, fecha_realizacion, observaciones } = req.body;
+    db.run('UPDATE mantenciones_programadas SET estado = ?, fecha_realizacion = ?, observaciones = ? WHERE id = ?',
+        [estado, fecha_realizacion, observaciones, req.params.id],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ updated: this.changes });
+        });
+});
+
+// ============================================
+// GARANTIAS
+// ============================================
+app.post('/api/aplicar-garantia', (req, res) => {
+    const { reserva_id, aplicar } = req.body;
+    
+    db.get('SELECT unidad_id, costo_total FROM reservas WHERE id = ?', [reserva_id], (err, reserva) => {
+        if (err || !reserva) return res.status(500).json({ error: 'Reserva no encontrada' });
+        
+        if (aplicar) {
+            const periodo = new Date().toLocaleString('es-ES', { month: 'long', year: 'numeric' });
+            db.run(`INSERT INTO multas (unidad_id, fecha, motivo, monto, periodo) 
+                    VALUES (?, date('now'), 'Garantía aplicada por mal uso de espacio común', ?, ?)`,
+                [reserva.unidad_id, reserva.costo_total, periodo], (err) => {
+                    if (err) return res.status(500).json({ error: err.message });
+                    db.run('UPDATE reservas SET garantia_aplicada = 1, garantia_cobrada = 1 WHERE id = ?', [reserva_id]);
+                    res.json({ success: true });
+                });
+        } else {
+            db.run('UPDATE reservas SET garantia_aplicada = 0 WHERE id = ?', [reserva_id]);
+            res.json({ success: true });
+        }
+    });
+});
+
+// ============================================
+// AGREGAR COLUMNAS FALTANTES
+// ============================================
+db.run('ALTER TABLE espacios_comunes ADD COLUMN tiene_juegos_inflables INTEGER DEFAULT 0', (e) => {});
+db.run('ALTER TABLE espacios_comunes ADD COLUMN monto_extra_juegos INTEGER DEFAULT 0', (e) => {});
+// Obtener residente por email
+app.get('/api/residentes/email/:email', (req, res) => {
+    const email = req.params.email;
+    db.get('SELECT * FROM residentes WHERE email = ?', [email], (err, row) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(row);
+    });
+});
+
+// Obtener unidad por residente_id
+app.get('/api/unidades/residente/:residenteId', (req, res) => {
+    const residenteId = req.params.residenteId;
+    db.get('SELECT * FROM unidades WHERE residente_id = ?', [residenteId], (err, row) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(row);
+    });
+});
+
+// Obtener gastos comunes por unidad
+app.get('/api/gastos-comunes/unidad/:unidadId', (req, res) => {
+    const unidadId = req.params.unidadId;
+    const sql = `SELECT gu.*, gc.periodo, gc.concepto, gc.fecha_vencimiento 
+                 FROM gastos_unidad gu 
+                 JOIN gastos_comunes gc ON gc.id = gu.gasto_comun_id 
+                 WHERE gu.unidad_id = ? 
+                 ORDER BY gc.periodo DESC`;
+    db.all(sql, [unidadId], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+// ============================================
+// RUTAS PARA RESIDENTES (FALTANTES)
+// ============================================
+
+// Obtener residente por email
+app.get('/api/residentes/email/:email', (req, res) => {
+    const email = req.params.email;
+    db.get('SELECT * FROM residentes WHERE email = ?', [email], (err, row) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!row) return res.status(404).json({ error: 'Residente no encontrado' });
+        res.json(row);
+    });
+});
+
+// Obtener unidad por residente_id
+app.get('/api/unidades/residente/:residenteId', (req, res) => {
+    const residenteId = req.params.residenteId;
+    db.get('SELECT * FROM unidades WHERE residente_id = ?', [residenteId], (err, row) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(row);
+    });
+});
+
+// Obtener gastos por residente (para Mis Gastos)
+app.get('/api/gastos/residente/:email', (req, res) => {
+    const email = req.params.email;
+    db.get('SELECT id FROM residentes WHERE email = ?', [email], (err, residente) => {
+        if (err || !residente) return res.status(404).json({ error: 'Residente no encontrado' });
+        
+        db.all(`SELECT g.* FROM gastos_unidad gu 
+                JOIN gastos_comunes gc ON gc.id = gu.gasto_comun_id
+                JOIN gastos g ON g.id = gc.id? 
+                WHERE gu.unidad_id = (SELECT id FROM unidades WHERE residente_id = ?)
+                ORDER BY g.fecha DESC`, 
+            [residente.id], (err, rows) => {
+                if (err) return res.status(500).json({ error: err.message });
+                res.json(rows || []);
+            });
+    });
+});
+
+// Obtener gastos comunes por unidad
+app.get('/api/gastos-comunes/unidad/:unidadId', (req, res) => {
+    const unidadId = req.params.unidadId;
+    db.all('SELECT * FROM gastos_unidad WHERE unidad_id = ? ORDER BY id DESC', [unidadId], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+// Obtener visitas por unidad
+app.get('/api/visitas/unidad/:unidadId', (req, res) => {
+    const unidadId = req.params.unidadId;
+    db.all('SELECT * FROM visitas WHERE unidad_destino_id = ? ORDER BY fecha_entrada DESC', [unidadId], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+// ========== MULTAS ==========
+
+app.get('/api/multas', (req, res) => {
+    db.all(`SELECT m.*, u.numero as unidad_numero 
+            FROM multas m 
+            JOIN unidades u ON u.id = m.unidad_id 
+            ORDER BY m.fecha DESC`, (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+app.post('/api/multas', (req, res) => {
+    const { unidad_id, fecha, motivo, monto } = req.body;
+    const periodo = new Date(fecha).toLocaleString('es-ES', { month: 'long', year: 'numeric' });
+    
+    db.run(`INSERT INTO multas (unidad_id, fecha, motivo, monto, periodo) 
+            VALUES (?, ?, ?, ?, ?)`,
+        [unidad_id, fecha, motivo, monto, periodo],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ id: this.lastID });
+        });
+});
+
+app.put('/api/multas/:id', (req, res) => {
+    const { pagado, fecha_pago } = req.body;
+    db.run('UPDATE multas SET pagado = ?, fecha_pago = ? WHERE id = ?',
+        [pagado, fecha_pago, req.params.id],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ updated: this.changes });
+        });
+});
+
+app.delete('/api/multas/:id', (req, res) => {
+    db.run('DELETE FROM multas WHERE id = ?', [req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ deleted: this.changes });
+    });
+});
+// ========== COMUNICADOS ==========
+
+// Obtener todos los comunicados
+app.get('/api/comunicados', (req, res) => {
+    db.all('SELECT * FROM comunicados ORDER BY fecha DESC', (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+// Crear nuevo comunicado
+app.post('/api/comunicados', (req, res) => {
+    const { titulo, contenido, autor, destino } = req.body;
+    db.run(`INSERT INTO comunicados (titulo, contenido, autor, destino, fecha) 
+            VALUES (?, ?, ?, ?, datetime('now'))`,
+        [titulo, contenido, autor || 'Administrador', destino || 'todos'],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ id: this.lastID });
+        });
+});
+
+// Eliminar comunicado
+app.delete('/api/comunicados/:id', (req, res) => {
+    db.run('DELETE FROM comunicados WHERE id = ?', [req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ deleted: this.changes });
+    });
+});
+// ========== CONFIGURACIÓN EDIFICIO ==========
+
+// Obtener configuración
+app.get('/api/config-edificio', (req, res) => {
+    db.get('SELECT * FROM config_edificio WHERE id = 1', (err, row) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(row || {});
+    });
+});
+
+// Actualizar configuración
+app.put('/api/config-edificio', (req, res) => {
+    const { nombre_edificio, banco, tipo_cuenta, numero_cuenta, rut_empresa, email_contacto, telefono_contacto, instrucciones_pago } = req.body;
+    
+    db.run(`UPDATE config_edificio SET 
+        nombre_edificio = ?, banco = ?, tipo_cuenta = ?, numero_cuenta = ?, 
+        rut_empresa = ?, email_contacto = ?, telefono_contacto = ?, instrucciones_pago = ?
+        WHERE id = 1`,
+        [nombre_edificio, banco, tipo_cuenta, numero_cuenta, rut_empresa, email_contacto, telefono_contacto, instrucciones_pago],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ updated: this.changes });
+        });
+});
+// ============================================
+// INICIAR SERVIDOR
+// ============================================
+app.listen(PORT, () => {
+    console.log(`✅ Backend Kubox corriendo en http://localhost:${PORT}`);
+});

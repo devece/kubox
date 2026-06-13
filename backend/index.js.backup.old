@@ -1,0 +1,1566 @@
+const express = require('express');
+const sqlite3 = require('sqlite3').verbose();
+const cors = require('cors');
+const bcrypt = require('bcryptjs');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+require('dotenv').config();
+const nodemailer = require('nodemailer');
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+const db = new sqlite3.Database('./kubox.db');
+
+// ==================================================
+// CONFIGURACIÓN DE EMAIL
+// ==================================================
+let emailTransporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER || '',
+    pass: process.env.EMAIL_PASS || ''
+  }
+});
+
+emailTransporter.verify((error, success) => {
+  if (error) {
+    console.log('⚠️ Email no configurado:', error.message);
+  } else {
+    console.log('✅ Email configurado correctamente');
+  }
+});
+
+// ==================================================
+// FUNCIONES DE NOTIFICACIÓN POR EMAIL
+// ==================================================
+
+async function enviarNotificacionCobro(residente, gasto, periodo, fecha_vencimiento) {
+  if (!residente.email) return;
+  if (!process.env.EMAIL_USER) return;
+  
+  const mailOptions = {
+    from: `"Kubox" <${process.env.EMAIL_USER}>`,
+    to: residente.email,
+    subject: `📋 Nuevo gasto común - Periodo ${periodo}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center;">
+          <h1 style="margin: 0;">Kubox</h1>
+          <p style="margin: 5px 0 0;">Gestión de Condominios</p>
+        </div>
+        <div style="padding: 20px; background: #f9fafb;">
+          <h2>Nuevo gasto común generado</h2>
+          <p>Estimado/a <strong>${residente.nombre}</strong>,</p>
+          <p>Se ha generado el gasto común correspondiente al periodo <strong>${periodo}</strong>.</p>
+          <div style="background: white; padding: 15px; border-radius: 8px; margin: 15px 0;">
+            <p><strong>🏢 Unidad:</strong> ${residente.unidad_numero}</p>
+            <p><strong>💰 Monto a pagar:</strong> <span style="font-size: 20px; color: #2563eb;">$${gasto.monto_total.toLocaleString()}</span></p>
+            <p><strong>📅 Fecha de vencimiento:</strong> ${fecha_vencimiento}</p>
+          </div>
+          <p style="color: #dc2626;">⚠️ Por favor, realiza el pago antes de la fecha de vencimiento.</p>
+          <hr>
+          <p style="font-size: 12px; color: #6b7280;">Este es un mensaje automático, por favor no responder.</p>
+        </div>
+      </div>
+    `
+  };
+
+  try {
+    await emailTransporter.sendMail(mailOptions);
+    console.log(`📧 Email enviado a ${residente.email}`);
+  } catch (error) {
+    console.error(`❌ Error enviando email a ${residente.email}:`, error.message);
+  }
+}
+
+async function enviarNotificacionPago(residente, gasto, periodo) {
+  if (!residente.email) return;
+  if (!process.env.EMAIL_USER) return;
+  
+  const mailOptions = {
+    from: `"Kubox" <${process.env.EMAIL_USER}>`,
+    to: residente.email,
+    subject: `✅ Pago registrado - Periodo ${periodo}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: white; padding: 20px; text-align: center;">
+          <h1 style="margin: 0;">Kubox</h1>
+          <p style="margin: 5px 0 0;">Pago Confirmado</p>
+        </div>
+        <div style="padding: 20px; background: #f9fafb;">
+          <h2>¡Pago registrado exitosamente!</h2>
+          <p>Estimado/a <strong>${residente.nombre}</strong>,</p>
+          <p>Se ha registrado el pago de su gasto común del periodo <strong>${periodo}</strong>.</p>
+          <div style="background: #f0fdf4; padding: 15px; border-radius: 8px; margin: 15px 0;">
+            <p><strong>🏢 Unidad:</strong> ${residente.unidad_numero}</p>
+            <p><strong>💰 Monto pagado:</strong> <span style="font-size: 20px; color: #16a34a;">$${gasto.monto_total.toLocaleString()}</span></p>
+          </div>
+          <p>¡Gracias por mantener tu cuenta al día!</p>
+          <hr>
+          <p style="font-size: 12px; color: #6b7280;">Este es un mensaje automático, por favor no responder.</p>
+        </div>
+      </div>
+    `
+  };
+
+  try {
+    await emailTransporter.sendMail(mailOptions);
+    console.log(`📧 Email de pago enviado a ${residente.email}`);
+  } catch (error) {
+    console.error(`❌ Error enviando email a ${residente.email}:`, error.message);
+  }
+}
+
+async function enviarComunicadoEmail(destinatario, comunicado) {
+  if (!destinatario.email) return;
+  if (!process.env.EMAIL_USER) return;
+  
+  const mailOptions = {
+    from: `"Kubox - ${comunicado.autor_rol === 'admin' ? 'Administración' : 'Comité'}" <${process.env.EMAIL_USER}>`,
+    to: destinatario.email,
+    subject: `📢 Nuevo comunicado: ${comunicado.titulo}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center;">
+          <h1 style="margin: 0;">Kubox</h1>
+          <p style="margin: 5px 0 0;">Nuevo Comunicado</p>
+        </div>
+        <div style="padding: 20px; background: #f9fafb;">
+          <h2>${comunicado.titulo}</h2>
+          <div style="background: white; padding: 15px; border-radius: 8px; margin: 15px 0;">
+            ${comunicado.contenido}
+          </div>
+          <hr>
+          <p style="font-size: 12px; color: #6b7280;">Este es un mensaje automático de Kubox</p>
+        </div>
+      </div>
+    `
+  };
+
+  try {
+    await emailTransporter.sendMail(mailOptions);
+    console.log(`📧 Comunicado enviado a ${destinatario.email}`);
+  } catch (error) {
+    console.error(`❌ Error enviando comunicado a ${destinatario.email}:`, error.message);
+  }
+}
+
+// ==================================================
+// CREAR TABLAS
+// ==================================================
+db.serialize(() => {
+  // Usuarios
+  db.run(`CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT UNIQUE,
+    password TEXT,
+    rol TEXT DEFAULT 'residente'
+  )`);
+  
+  // Condominios
+  db.run(`CREATE TABLE IF NOT EXISTS condominios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT,
+    creado_en DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+  
+  // Unidades
+  db.run(`CREATE TABLE IF NOT EXISTS unidades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    condominio_id INTEGER,
+    numero TEXT,
+    torre TEXT,
+    tipo TEXT DEFAULT 'depto',
+    metros_cuadrados INTEGER,
+    estacionamiento INTEGER DEFAULT 0,
+    bodega INTEGER DEFAULT 0,
+    residente_id INTEGER,
+    FOREIGN KEY(condominio_id) REFERENCES condominios(id),
+    FOREIGN KEY(residente_id) REFERENCES residentes(id)
+  )`);
+  
+  // Residentes
+  db.run(`CREATE TABLE IF NOT EXISTS residentes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT,
+    email TEXT UNIQUE,
+    telefono TEXT,
+    condominio_id INTEGER
+  )`);
+  
+  // Configuración de gastos
+  db.run(`CREATE TABLE IF NOT EXISTS config_gastos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    condominio_id INTEGER UNIQUE,
+    valor_metro_cuadrado INTEGER DEFAULT 500,
+    porcentaje_fondo_reserva INTEGER DEFAULT 5,
+    interes_mora_mensual INTEGER DEFAULT 2,
+    dias_gracia INTEGER DEFAULT 5,
+    moneda TEXT DEFAULT 'CLP'
+  )`);
+  
+  // Gastos comunes
+  db.run(`CREATE TABLE IF NOT EXISTS gastos_comunes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    condominio_id INTEGER,
+    periodo TEXT,
+    fecha_emision DATE,
+    fecha_vencimiento DATE,
+    monto_total INTEGER,
+    pagado BOOLEAN DEFAULT 0,
+    fecha_pago DATE,
+    interes_mora INTEGER DEFAULT 0,
+    FOREIGN KEY(condominio_id) REFERENCES condominios(id)
+  )`);
+  
+  // Detalle de gasto por unidad
+  db.run(`CREATE TABLE IF NOT EXISTS gastos_unidad (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    gasto_comun_id INTEGER,
+    unidad_id INTEGER,
+    residente_id INTEGER,
+    monto_base INTEGER,
+    fondo_reserva INTEGER,
+    monto_total INTEGER,
+    pagado BOOLEAN DEFAULT 0,
+    fecha_pago DATE,
+    interes_mora INTEGER DEFAULT 0,
+    FOREIGN KEY(gasto_comun_id) REFERENCES gastos_comunes(id),
+    FOREIGN KEY(unidad_id) REFERENCES unidades(id),
+    FOREIGN KEY(residente_id) REFERENCES residentes(id)
+  )`);
+  
+  // Categorías de gastos
+  db.run(`CREATE TABLE IF NOT EXISTS categorias_gastos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT UNIQUE,
+    descripcion TEXT
+  )`);
+  
+  // Gastos reales
+  db.run(`CREATE TABLE IF NOT EXISTS gastos_reales (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    condominio_id INTEGER,
+    categoria_id INTEGER,
+    descripcion TEXT,
+    monto INTEGER,
+    fecha DATE,
+    periodo TEXT,
+    comprobante TEXT,
+    FOREIGN KEY(categoria_id) REFERENCES categorias_gastos(id)
+  )`);
+  
+  // Comunicados
+  db.run(`CREATE TABLE IF NOT EXISTS comunicados (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    titulo TEXT,
+    contenido TEXT,
+    autor TEXT,
+    autor_rol TEXT,
+    destinatarios TEXT,
+    fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
+    adjunto_url TEXT,
+    adjunto_nombre TEXT
+  )`);
+  
+  // Espacios
+  db.run(`CREATE TABLE IF NOT EXISTS espacios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    condominio_id INTEGER DEFAULT 1,
+    nombre TEXT NOT NULL,
+    descripcion TEXT,
+    capacidad INTEGER DEFAULT 0,
+    tiene_costo INTEGER DEFAULT 0,
+    costo_por_jornada INTEGER DEFAULT 0,
+    monto_garantia INTEGER DEFAULT 0,
+    horario_semana_inicio TEXT DEFAULT '11:00',
+    horario_semana_fin TEXT DEFAULT '22:00',
+    horario_fin_semana_inicio TEXT DEFAULT '11:00',
+    horario_fin_semana_fin TEXT DEFAULT '02:00',
+    activo INTEGER DEFAULT 1
+  )`);
+  
+  // Reservas
+  db.run(`CREATE TABLE IF NOT EXISTS reservas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    espacio_id INTEGER,
+    residente_id INTEGER,
+    unidad_id INTEGER,
+    fecha DATE,
+    hora_inicio TEXT,
+    hora_fin TEXT,
+    estado TEXT DEFAULT 'pendiente',
+    monto_total INTEGER DEFAULT 0,
+    pagado INTEGER DEFAULT 0,
+    comentario TEXT,
+    fecha_reserva DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+  
+  // Bitácora
+  db.run(`CREATE TABLE IF NOT EXISTS bitacora (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
+    tipo TEXT CHECK(tipo IN ('info', 'alerta', 'incidencia')),
+    descripcion TEXT NOT NULL,
+    conserje_id INTEGER
+  )`);
+  
+  // Encomiendas
+  db.run(`CREATE TABLE IF NOT EXISTS encomiendas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fecha_ingreso DATETIME DEFAULT CURRENT_TIMESTAMP,
+    residente_id INTEGER,
+    unidad_id INTEGER,
+    remitente TEXT,
+    descripcion TEXT,
+    estado TEXT DEFAULT 'pendiente',
+    fecha_retiro DATETIME
+  )`);
+  
+  // Visitas
+  db.run(`CREATE TABLE IF NOT EXISTS visitas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fecha_entrada DATETIME DEFAULT CURRENT_TIMESTAMP,
+    fecha_salida DATETIME,
+    visitante_nombre TEXT NOT NULL,
+    visitante_rut TEXT,
+    visitante_telefono TEXT,
+    motivo TEXT,
+    unidad_destino_id INTEGER,
+    placa_vehiculo TEXT,
+    estado TEXT DEFAULT 'activa'
+  )`);
+  
+  // Insertar categorías por defecto
+  db.run(`INSERT OR IGNORE INTO categorias_gastos (id, nombre) VALUES (1, 'Personal (Sueldos)')`);
+  db.run(`INSERT OR IGNORE INTO categorias_gastos (id, nombre) VALUES (2, 'Luz eléctrica')`);
+  db.run(`INSERT OR IGNORE INTO categorias_gastos (id, nombre) VALUES (3, 'Agua potable')`);
+  db.run(`INSERT OR IGNORE INTO categorias_gastos (id, nombre) VALUES (4, 'Mantención ascensores')`);
+  db.run(`INSERT OR IGNORE INTO categorias_gastos (id, nombre) VALUES (5, 'Limpieza y aseo')`);
+  db.run(`INSERT OR IGNORE INTO categorias_gastos (id, nombre) VALUES (6, 'Mantención áreas comunes')`);
+  db.run(`INSERT OR IGNORE INTO categorias_gastos (id, nombre) VALUES (7, 'Seguridad')`);
+  db.run(`INSERT OR IGNORE INTO categorias_gastos (id, nombre) VALUES (8, 'Otros')`);
+  
+  // Insertar config por defecto
+  db.get(`SELECT * FROM config_gastos WHERE condominio_id = 1`, (err, row) => {
+    if (!row) {
+      db.run(`INSERT INTO config_gastos (condominio_id, valor_metro_cuadrado, porcentaje_fondo_reserva, interes_mora_mensual, dias_gracia) 
+              VALUES (1, 500, 5, 2, 5)`);
+    }
+  });
+  
+  // Insertar usuario admin
+  const hashedPassword = bcrypt.hashSync('admin123', 10);
+  db.run(`INSERT OR IGNORE INTO usuarios (id, email, password, rol) VALUES (1, 'admin@kubox.com', ?, 'admin')`, [hashedPassword]);
+  
+  // Insertar condominio demo
+  db.run(`INSERT OR IGNORE INTO condominios (id, nombre) VALUES (1, 'Kubox Central')`);
+});
+
+// ==================================================
+// LOGIN
+// ==================================================
+app.post('/api/login', (req, res) => {
+  const { email, password } = req.body;
+  db.get(`SELECT * FROM usuarios WHERE email = ?`, [email], (err, user) => {
+    if (err || !user) return res.status(401).json({ error: 'Usuario no existe' });
+    if (bcrypt.compareSync(password, user.password)) {
+      res.json({ id: user.id, email: user.email, rol: user.rol });
+    } else {
+      res.status(401).json({ error: 'Contraseña incorrecta' });
+    }
+  });
+});
+
+// ==================================================
+// DASHBOARD
+// ==================================================
+app.get('/api/dashboard', (req, res) => {
+  db.get(`SELECT 
+    (SELECT COUNT(*) FROM unidades) as total_unidades,
+    (SELECT COUNT(*) FROM residentes) as total_residentes,
+    (SELECT COUNT(*) FROM unidades WHERE residente_id IS NOT NULL) as ocupadas,
+    (SELECT COUNT(*) FROM gastos_unidad WHERE pagado = 0) as morosos`,
+    (err, row) => {
+      res.json(row || { total_unidades: 0, total_residentes: 0, ocupadas: 0, morosos: 0 });
+    });
+});
+
+// ==================================================
+// CONFIGURACIÓN DE GASTOS
+// ==================================================
+app.get('/api/config-gastos', (req, res) => {
+  db.get(`SELECT * FROM config_gastos WHERE condominio_id = 1`, (err, row) => {
+    if (err || !row) {
+      res.json({ valor_metro_cuadrado: 500, porcentaje_fondo_reserva: 5, interes_mora_mensual: 2, dias_gracia: 5 });
+    } else {
+      res.json(row);
+    }
+  });
+});
+
+app.put('/api/config-gastos', (req, res) => {
+  const { valor_metro_cuadrado, porcentaje_fondo_reserva, interes_mora_mensual, dias_gracia } = req.body;
+  db.run(`UPDATE config_gastos SET 
+    valor_metro_cuadrado = ?, 
+    porcentaje_fondo_reserva = ?, 
+    interes_mora_mensual = ?, 
+    dias_gracia = ? 
+    WHERE condominio_id = 1`,
+    [valor_metro_cuadrado, porcentaje_fondo_reserva, interes_mora_mensual, dias_gracia], 
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.json({ success: true });
+      }
+    });
+});
+
+// ==================================================
+// CATEGORÍAS Y GASTOS REALES
+// ==================================================
+app.get('/api/categorias-gastos', (req, res) => {
+  db.all(`SELECT * FROM categorias_gastos ORDER BY nombre`, (err, rows) => {
+    res.json(rows || []);
+  });
+});
+
+app.get('/api/gastos-reales/:periodo', (req, res) => {
+  const { periodo } = req.params;
+  db.all(`SELECT gr.*, c.nombre as categoria_nombre
+          FROM gastos_reales gr
+          JOIN categorias_gastos c ON gr.categoria_id = c.id
+          WHERE gr.periodo = ? AND gr.condominio_id = 1
+          ORDER BY gr.fecha DESC`, [periodo], (err, rows) => {
+    res.json(rows || []);
+  });
+});
+
+app.get('/api/gastos-reales-desglose/:periodo', (req, res) => {
+  const { periodo } = req.params;
+  db.all(`SELECT gr.*, c.nombre as categoria_nombre
+          FROM gastos_reales gr
+          JOIN categorias_gastos c ON gr.categoria_id = c.id
+          WHERE gr.periodo = ? AND gr.condominio_id = 1
+          ORDER BY gr.categoria_id`, [periodo], (err, rows) => {
+    res.json(rows || []);
+  });
+});
+
+app.post('/api/gastos-reales', (req, res) => {
+  const { categoria_id, descripcion, monto, fecha, periodo, comprobante } = req.body;
+  db.run(`INSERT INTO gastos_reales (condominio_id, categoria_id, descripcion, monto, fecha, periodo, comprobante)
+          VALUES (1, ?, ?, ?, ?, ?, ?)`,
+    [categoria_id, descripcion, monto, fecha, periodo, comprobante || null],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.json({ id: this.lastID });
+      }
+    });
+});
+
+app.delete('/api/gastos-reales/:id', (req, res) => {
+  db.run(`DELETE FROM gastos_reales WHERE id = ?`, [req.params.id], () => {
+    res.json({ success: true });
+  });
+});
+
+// ==================================================
+// GENERAR GASTO MENSUAL DESDE GASTOS REALES
+// ==================================================
+app.post('/api/generar-gasto-desde-reales', (req, res) => {
+  const { periodo, fecha_vencimiento } = req.body;
+  
+  if (!periodo || !fecha_vencimiento) {
+    return res.status(400).json({ error: 'Faltan datos' });
+  }
+  
+  db.get(`SELECT SUM(monto) as total FROM gastos_reales 
+          WHERE periodo = ? AND condominio_id = 1`, [periodo], (err, result) => {
+    
+    const totalGastos = result?.total || 0;
+    
+    if (totalGastos === 0) {
+      return res.status(400).json({ error: 'No hay gastos registrados para este periodo' });
+    }
+    
+    db.get(`SELECT * FROM config_gastos WHERE condominio_id = 1`, (err, config) => {
+      const fondoReserva = Math.floor(totalGastos * (config?.porcentaje_fondo_reserva || 5) / 100);
+      const montoTotal = totalGastos + fondoReserva;
+      
+      db.all(`SELECT u.*, r.id as residente_id 
+              FROM unidades u 
+              LEFT JOIN residentes r ON u.residente_id = r.id
+              WHERE u.condominio_id = 1`, (err, unidades) => {
+        
+        if (unidades.length === 0) {
+          return res.status(400).json({ error: 'No hay unidades registradas' });
+        }
+        
+        const totalM2 = unidades.reduce((sum, u) => sum + (u.metros_cuadrados || 50), 0);
+        const gastosUnidad = [];
+        
+        for (const u of unidades) {
+          const m2 = u.metros_cuadrados || 50;
+          const proporcion = m2 / totalM2;
+          const montoBase = Math.floor(totalGastos * proporcion);
+          const fondoReservaUnidad = Math.floor(fondoReserva * proporcion);
+          const montoTotalUnidad = montoBase + fondoReservaUnidad;
+          
+          gastosUnidad.push({
+            unidad_id: u.id,
+            residente_id: u.residente_id,
+            monto_base: montoBase,
+            fondo_reserva: fondoReservaUnidad,
+            monto_total: montoTotalUnidad
+          });
+        }
+        
+        db.run(`INSERT INTO gastos_comunes (condominio_id, periodo, fecha_emision, fecha_vencimiento, monto_total) 
+                VALUES (1, ?, date('now'), ?, ?)`,
+          [periodo, fecha_vencimiento, montoTotal], function(err) {
+            if (err) {
+              return res.status(500).json({ error: err.message });
+            }
+            
+            const gastoComunId = this.lastID;
+            let insertados = 0;
+            
+            for (const gu of gastosUnidad) {
+              db.run(`INSERT INTO gastos_unidad (gasto_comun_id, unidad_id, residente_id, monto_base, fondo_reserva, monto_total) 
+                      VALUES (?, ?, ?, ?, ?, ?)`,
+                [gastoComunId, gu.unidad_id, gu.residente_id, gu.monto_base, gu.fondo_reserva, gu.monto_total],
+                () => {
+                  insertados++;
+                  if (insertados === gastosUnidad.length) {
+                    // Enviar notificaciones por email
+                    for (const guNotif of gastosUnidad) {
+                      if (guNotif.residente_id) {
+                        db.get(`SELECT r.*, u.numero as unidad_numero 
+                                FROM residentes r 
+                                JOIN unidades u ON r.id = u.residente_id 
+                                WHERE r.id = ?`, [guNotif.residente_id], (err, residente) => {
+                          if (residente && residente.email && residente.email.includes('@')) {
+                            enviarNotificacionCobro(residente, guNotif, periodo, fecha_vencimiento);
+                          }
+                        });
+                      }
+                    }
+                    
+                    res.json({ 
+                      success: true, 
+                      gastoComunId, 
+                      total_gastos: totalGastos,
+                      fondo_reserva: fondoReserva,
+                      monto_total: montoTotal,
+                      unidades: unidades.length 
+                    });
+                  }
+                });
+            }
+          });
+      });
+    });
+  });
+});
+
+// ==================================================
+// REGISTRAR PAGO DE UNIDAD
+// ==================================================
+app.post('/api/pagar-gasto', (req, res) => {
+  const { gasto_unidad_id, fecha_pago } = req.body;
+  
+  db.get(`SELECT gu.*, gc.fecha_vencimiento, gc.periodo, c.dias_gracia, c.interes_mora_mensual,
+          r.nombre as residente_nombre, r.email as residente_email, u.numero as unidad_numero
+          FROM gastos_unidad gu
+          JOIN gastos_comunes gc ON gu.gasto_comun_id = gc.id
+          JOIN config_gastos c ON c.condominio_id = gc.condominio_id
+          JOIN unidades u ON gu.unidad_id = u.id
+          LEFT JOIN residentes r ON gu.residente_id = r.id
+          WHERE gu.id = ?`, [gasto_unidad_id], (err, gasto) => {
+    
+    if (err || !gasto) {
+      return res.status(404).json({ error: 'Gasto no encontrado' });
+    }
+    
+    let interesMora = 0;
+    const fechaVenc = new Date(gasto.fecha_vencimiento);
+    const fechaPagoDate = new Date(fecha_pago);
+    const diffDays = Math.ceil((fechaPagoDate - fechaVenc) / (1000 * 60 * 60 * 24));
+    
+    if (diffDays > gasto.dias_gracia) {
+      const mesesMora = Math.ceil((diffDays - gasto.dias_gracia) / 30);
+      interesMora = Math.floor(gasto.monto_total * (gasto.interes_mora_mensual / 100) * mesesMora);
+    }
+    
+    db.run(`UPDATE gastos_unidad SET pagado = 1, fecha_pago = ?, interes_mora = ? WHERE id = ?`,
+      [fecha_pago, interesMora, gasto_unidad_id], function(err) {
+        if (err) {
+          res.status(500).json({ error: err.message });
+        } else {
+          if (gasto.residente_email) {
+            db.get(`SELECT r.*, u.numero as unidad_numero 
+                    FROM residentes r 
+                    JOIN unidades u ON r.id = u.residente_id 
+                    WHERE r.email = ?`, [gasto.residente_email], (err, residente) => {
+              if (residente) {
+                enviarNotificacionPago(residente, gasto, gasto.periodo);
+              }
+            });
+          }
+          res.json({ success: true, interes_mora_aplicado: interesMora });
+        }
+      });
+  });
+});
+
+// ==================================================
+// RESIDENTE - VER SU DEUDA
+// ==================================================
+app.get('/api/residente/unidad', (req, res) => {
+  const { email } = req.query;
+  db.get(`SELECT u.id as unidad_id, u.numero, u.metros_cuadrados
+          FROM unidades u
+          JOIN residentes r ON u.residente_id = r.id
+          WHERE r.email = ?`, [email], (err, row) => {
+    res.json(row || {});
+  });
+});
+
+app.get('/api/residente/deuda', (req, res) => {
+  const { unidad_id } = req.query;
+  db.all(`SELECT gu.*, gc.periodo, gc.fecha_vencimiento
+          FROM gastos_unidad gu
+          JOIN gastos_comunes gc ON gu.gasto_comun_id = gc.id
+          WHERE gu.unidad_id = ? AND gu.pagado = 0`, [unidad_id], (err, rows) => {
+    const total = rows.reduce((sum, r) => sum + r.monto_total + (r.interes_mora || 0), 0);
+    res.json({ deudas: rows || [], total: total || 0 });
+  });
+});
+
+app.get('/api/residente/perfil', (req, res) => {
+  const { email } = req.query;
+  db.get(`SELECT r.*, u.id as unidad_id, u.numero as unidad_numero, u.metros_cuadrados
+          FROM residentes r
+          LEFT JOIN unidades u ON r.id = u.residente_id
+          WHERE r.email = ?`, [email], (err, row) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else if (!row) {
+      res.json({ error: 'Residente no encontrado' });
+    } else {
+      res.json(row);
+    }
+  });
+});
+
+app.get('/api/residente/historial', (req, res) => {
+  const { unidad_id } = req.query;
+  db.all(`SELECT gu.*, gc.periodo, gc.fecha_emision, gc.fecha_vencimiento
+          FROM gastos_unidad gu
+          JOIN gastos_comunes gc ON gu.gasto_comun_id = gc.id
+          WHERE gu.unidad_id = ?
+          ORDER BY gc.periodo DESC`, [unidad_id], (err, rows) => {
+    res.json(rows || []);
+  });
+});
+
+app.get('/api/residente/gasto-detalle/:gasto_unidad_id', (req, res) => {
+  const { gasto_unidad_id } = req.params;
+  db.get(`SELECT gu.*, gc.periodo, gc.fecha_emision, gc.fecha_vencimiento
+          FROM gastos_unidad gu
+          JOIN gastos_comunes gc ON gu.gasto_comun_id = gc.id
+          WHERE gu.id = ?`, [gasto_unidad_id], (err, row) => {
+    res.json(row || {});
+  });
+});
+
+// ==================================================
+// OBTENER GASTOS
+// ==================================================
+app.get('/api/gastos', (req, res) => {
+  db.all(`SELECT gc.*, 
+          (SELECT COUNT(*) FROM gastos_unidad WHERE gasto_comun_id = gc.id AND pagado = 0) as morosos
+          FROM gastos_comunes gc
+          ORDER BY gc.periodo DESC`, (err, gastos) => {
+    res.json(gastos || []);
+  });
+});
+
+app.get('/api/gastos-detalle/:gastoComunId', (req, res) => {
+  db.all(`SELECT gu.*, u.numero as unidad_numero, u.metros_cuadrados, r.nombre as residente_nombre
+          FROM gastos_unidad gu
+          JOIN unidades u ON gu.unidad_id = u.id
+          LEFT JOIN residentes r ON gu.residente_id = r.id
+          WHERE gu.gasto_comun_id = ?`, [req.params.gastoComunId], (err, rows) => {
+    res.json(rows || []);
+  });
+});
+
+// ==================================================
+// CRUD UNIDADES
+// ==================================================
+app.get('/api/unidades', (req, res) => {
+  db.all(`SELECT u.*, r.nombre as residente_nombre 
+          FROM unidades u 
+          LEFT JOIN residentes r ON u.residente_id = r.id`, (err, rows) => {
+    res.json(rows || []);
+  });
+});
+
+app.post('/api/unidades', (req, res) => {
+  const { numero, torre, tipo, metros_cuadrados, estacionamiento, bodega, residente_id } = req.body;
+  db.run(`INSERT INTO unidades (numero, torre, tipo, metros_cuadrados, estacionamiento, bodega, residente_id, condominio_id) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+    [numero, torre || null, tipo || 'depto', metros_cuadrados || null, estacionamiento ? 1 : 0, bodega ? 1 : 0, residente_id || null], 
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.json({ id: this.lastID });
+      }
+    });
+});
+
+app.put('/api/unidades/:id', (req, res) => {
+  const { numero, torre, tipo, metros_cuadrados, estacionamiento, bodega, residente_id } = req.body;
+  db.run(`UPDATE unidades SET numero=?, torre=?, tipo=?, metros_cuadrados=?, estacionamiento=?, bodega=?, residente_id=? WHERE id=?`,
+    [numero, torre, tipo, metros_cuadrados, estacionamiento, bodega, residente_id, req.params.id], 
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.json({ success: true });
+      }
+    });
+});
+
+app.delete('/api/unidades/:id', (req, res) => {
+  db.run(`DELETE FROM unidades WHERE id=?`, [req.params.id], () => {
+    res.json({ success: true });
+  });
+});
+
+// ==================================================
+// CRUD RESIDENTES
+// ==================================================
+app.get('/api/residentes', (req, res) => {
+  db.all(`SELECT r.*, u.numero as unidad_numero 
+          FROM residentes r
+          LEFT JOIN unidades u ON r.id = u.residente_id
+          ORDER BY CAST(u.numero AS INTEGER) ASC`, (err, rows) => {
+    res.json(rows || []);
+  });
+});
+
+app.post('/api/residentes', (req, res) => {
+  const { nombre, email, telefono } = req.body;
+  db.run(`INSERT INTO residentes (nombre, email, telefono, condominio_id) VALUES (?, ?, ?, 1)`,
+    [nombre, email, telefono], function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.json({ id: this.lastID });
+      }
+    });
+});
+
+app.put('/api/residentes/:id', (req, res) => {
+  const { nombre, email, telefono } = req.body;
+  db.run(`UPDATE residentes SET nombre=?, email=?, telefono=? WHERE id=?`,
+    [nombre, email, telefono, req.params.id], 
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.json({ success: true });
+      }
+    });
+});
+
+app.delete('/api/residentes/:id', (req, res) => {
+  db.run(`UPDATE unidades SET residente_id = NULL WHERE residente_id = ?`, [req.params.id], () => {
+    db.run(`DELETE FROM residentes WHERE id=?`, [req.params.id], () => {
+      res.json({ success: true });
+    });
+  });
+});
+
+// ==================================================
+// GRÁFICOS Y ESTADÍSTICAS
+// ==================================================
+app.get('/api/grafico-ingresos', (req, res) => {
+  db.all(`SELECT 
+            gc.periodo,
+            SUM(gu.monto_total + gu.interes_mora) as total_recaudado,
+            (SELECT COUNT(*) FROM gastos_unidad WHERE pagado = 1 AND gasto_comun_id = gc.id) as pagados,
+            (SELECT COUNT(*) FROM gastos_unidad WHERE pagado = 0 AND gasto_comun_id = gc.id) as morosos
+          FROM gastos_comunes gc
+          JOIN gastos_unidad gu ON gc.id = gu.gasto_comun_id
+          GROUP BY gc.periodo
+          ORDER BY gc.periodo DESC
+          LIMIT 6`, (err, rows) => {
+    res.json(rows || []);
+  });
+});
+
+app.get('/api/grafico-gastos-categoria', (req, res) => {
+  db.all(`SELECT 
+            c.nombre as categoria,
+            SUM(gr.monto) as total
+          FROM gastos_reales gr
+          JOIN categorias_gastos c ON gr.categoria_id = c.id
+          WHERE gr.periodo = (
+            SELECT periodo FROM gastos_comunes ORDER BY periodo DESC LIMIT 1
+          )
+          GROUP BY gr.categoria_id
+          ORDER BY total DESC
+          LIMIT 6`, (err, rows) => {
+    res.json(rows || []);
+  });
+});
+
+app.get('/api/grafico-morosidad', (req, res) => {
+  db.all(`SELECT 
+            gc.periodo,
+            COUNT(CASE WHEN gu.pagado = 0 THEN 1 END) as morosos,
+            COUNT(CASE WHEN gu.pagado = 1 THEN 1 END) as pagados,
+            COUNT(*) as total
+          FROM gastos_comunes gc
+          JOIN gastos_unidad gu ON gc.id = gu.gasto_comun_id
+          GROUP BY gc.periodo
+          ORDER BY gc.periodo DESC
+          LIMIT 6`, (err, rows) => {
+    res.json(rows || []);
+  });
+});
+
+app.get('/api/dashboard-stats', (req, res) => {
+  db.get(`SELECT 
+    (SELECT COUNT(*) FROM unidades) as total_unidades,
+    (SELECT COUNT(*) FROM unidades WHERE residente_id IS NOT NULL) as ocupadas,
+    (SELECT COUNT(*) FROM residentes) as total_residentes,
+    (SELECT COUNT(*) FROM gastos_unidad WHERE pagado = 0) as morosos,
+    (SELECT SUM(gu.monto_total + gu.interes_mora) FROM gastos_unidad gu WHERE gu.pagado = 1 AND strftime('%Y-%m', gu.fecha_pago) = strftime('%Y-%m', 'now')) as recaudado_mes,
+    (SELECT SUM(gu.monto_total + gu.interes_mora) FROM gastos_unidad gu WHERE gu.pagado = 1) as recaudado_total,
+    (SELECT SUM(gu.monto_total + gu.interes_mora) FROM gastos_unidad gu WHERE gu.pagado = 0) as deuda_total
+    `, (err, row) => {
+    res.json(row || {});
+  });
+});
+
+// ==================================================
+// ESPACIOS COMUNES
+// ==================================================
+app.get('/api/espacios', (req, res) => {
+  db.all(`SELECT * FROM espacios WHERE condominio_id = 1 AND activo = 1 ORDER BY nombre`, (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.json(rows || []);
+    }
+  });
+});
+
+app.get('/api/espacios/:id', (req, res) => {
+  db.get(`SELECT * FROM espacios WHERE id = ?`, [req.params.id], (err, row) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.json(row || {});
+    }
+  });
+});
+
+app.post('/api/espacios', (req, res) => {
+  const { nombre, descripcion, capacidad, tiene_costo, costo_por_jornada, monto_garantia, horario_semana_inicio, horario_semana_fin, horario_fin_semana_inicio, horario_fin_semana_fin } = req.body;
+  if (!nombre) return res.status(400).json({ error: 'El nombre es obligatorio' });
+  db.run(`INSERT INTO espacios (condominio_id, nombre, descripcion, capacidad, tiene_costo, costo_por_jornada, monto_garantia, horario_semana_inicio, horario_semana_fin, horario_fin_semana_inicio, horario_fin_semana_fin)
+          VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [nombre, descripcion || null, capacidad || 0, tiene_costo ? 1 : 0, costo_por_jornada || 0, monto_garantia || 0, horario_semana_inicio || '11:00', horario_semana_fin || '22:00', horario_fin_semana_inicio || '11:00', horario_fin_semana_fin || '02:00'],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.json({ id: this.lastID });
+      }
+    });
+});
+
+app.put('/api/espacios/:id', (req, res) => {
+  const { nombre, descripcion, capacidad, tiene_costo, costo_por_jornada, monto_garantia, horario_semana_inicio, horario_semana_fin, horario_fin_semana_inicio, horario_fin_semana_fin, activo } = req.body;
+  db.run(`UPDATE espacios SET nombre=?, descripcion=?, capacidad=?, tiene_costo=?, costo_por_jornada=?, monto_garantia=?, horario_semana_inicio=?, horario_semana_fin=?, horario_fin_semana_inicio=?, horario_fin_semana_fin=?, activo=? WHERE id=?`,
+    [nombre, descripcion, capacidad, tiene_costo ? 1 : 0, costo_por_jornada || 0, monto_garantia || 0, horario_semana_inicio, horario_semana_fin, horario_fin_semana_inicio, horario_fin_semana_fin, activo ? 1 : 0, req.params.id],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.json({ success: true });
+      }
+    });
+});
+
+app.delete('/api/espacios/:id', (req, res) => {
+  db.run(`UPDATE espacios SET activo = 0 WHERE id = ?`, [req.params.id], () => {
+    res.json({ success: true });
+  });
+});
+
+// ==================================================
+// RESERVAS DE ESPACIOS
+// ==================================================
+function esMoroso(residenteId, callback) {
+  db.get(`SELECT COUNT(*) as deuda_meses, SUM(gu.monto_total) as deuda_total
+          FROM gastos_unidad gu
+          WHERE gu.residente_id = ? AND gu.pagado = 0`, [residenteId], (err, row) => {
+    callback(null, (row?.deuda_meses || 0) >= 2 || (row?.deuda_total || 0) > 0);
+  });
+}
+
+app.get('/api/reservas', (req, res) => {
+  const { espacio_id, fecha, unidad_id } = req.query;
+  let query = `SELECT r.*, e.nombre as espacio_nombre, e.monto_garantia, e.costo_por_jornada,
+               re.nombre as residente_nombre, u.numero as unidad_numero
+               FROM reservas r
+               JOIN espacios e ON r.espacio_id = e.id
+               LEFT JOIN residentes re ON r.residente_id = re.id
+               LEFT JOIN unidades u ON r.unidad_id = u.id`;
+  let conditions = [];
+  let params = [];
+
+  if (espacio_id) {
+    conditions.push('r.espacio_id = ?');
+    params.push(espacio_id);
+  }
+  if (fecha) {
+    conditions.push('r.fecha = ?');
+    params.push(fecha);
+  }
+  if (unidad_id) {
+    conditions.push('r.unidad_id = ?');
+    params.push(unidad_id);
+  }
+
+  if (conditions.length) query += ' WHERE ' + conditions.join(' AND ');
+  query += ' ORDER BY r.fecha DESC, r.hora_inicio ASC';
+
+  db.all(query, params, (err, rows) => {
+    res.json(rows || []);
+  });
+});
+
+app.get('/api/reservas/disponibilidad', (req, res) => {
+  const { espacio_id, fecha, hora_inicio, hora_fin } = req.query;
+  db.get(`SELECT COUNT(*) as conflictos FROM reservas 
+          WHERE espacio_id = ? AND fecha = ? 
+          AND estado != 'cancelada'
+          AND ((hora_inicio <= ? AND hora_fin > ?) OR (hora_inicio < ? AND hora_fin >= ?) OR (hora_inicio >= ? AND hora_fin <= ?))`,
+    [espacio_id, fecha, hora_fin, hora_inicio, hora_fin, hora_inicio, hora_inicio, hora_fin],
+    (err, row) => {
+      res.json({ disponible: (row?.conflictos || 0) === 0 });
+    });
+});
+
+app.post('/api/reservas', (req, res) => {
+  const { espacio_id, residente_id, unidad_id, fecha, hora_inicio, hora_fin, comentario } = req.body;
+  esMoroso(residente_id, (err, moroso) => {
+    if (moroso) return res.status(403).json({ error: 'No puedes reservar porque tienes deudas pendientes.' });
+    db.get(`SELECT COUNT(*) as conflictos FROM reservas 
+            WHERE espacio_id = ? AND fecha = ? AND estado != 'cancelada'
+            AND ((hora_inicio <= ? AND hora_fin > ?) OR (hora_inicio < ? AND hora_fin >= ?))`,
+      [espacio_id, fecha, hora_fin, hora_inicio, hora_fin, hora_inicio],
+      (err, row) => {
+        if (row.conflictos > 0) return res.status(409).json({ error: 'El espacio ya está reservado' });
+        db.get(`SELECT tiene_costo, costo_por_jornada, monto_garantia FROM espacios WHERE id = ?`, [espacio_id], (err, espacio) => {
+          const montoTotal = (espacio?.tiene_costo ? (espacio?.costo_por_jornada || 0) : 0);
+          const montoGarantia = espacio?.monto_garantia || 0;
+          const totalConGarantia = montoTotal + montoGarantia;
+          db.run(`INSERT INTO reservas (espacio_id, residente_id, unidad_id, fecha, hora_inicio, hora_fin, comentario, monto_total)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [espacio_id, residente_id, unidad_id, fecha, hora_inicio, hora_fin, comentario || null, totalConGarantia],
+            function(err) {
+              if (err) {
+                res.status(500).json({ error: err.message });
+              } else {
+                res.json({ id: this.lastID, monto_total: totalConGarantia, monto_uso: montoTotal, monto_garantia: montoGarantia });
+              }
+            });
+        });
+      });
+  });
+});
+
+app.put('/api/reservas/:id/cancelar', (req, res) => {
+  db.run(`UPDATE reservas SET estado = 'cancelada' WHERE id = ?`, [req.params.id], () => {
+    res.json({ success: true });
+  });
+});
+
+app.put('/api/reservas/:id/pagar', (req, res) => {
+  db.run(`UPDATE reservas SET pagado = 1, estado = 'confirmada' WHERE id = ?`, [req.params.id], () => {
+    res.json({ success: true });
+  });
+});
+
+// ==================================================
+// CONSERJERÍA
+// ==================================================
+app.get('/api/bitacora', (req, res) => {
+  db.all(`SELECT b.*, u.nombre as conserje_nombre FROM bitacora b LEFT JOIN usuarios u ON b.conserje_id = u.id ORDER BY b.fecha DESC`, (err, rows) => {
+    res.json(rows || []);
+  });
+});
+
+app.post('/api/bitacora', (req, res) => {
+  const { tipo, descripcion } = req.body;
+  db.run(`INSERT INTO bitacora (tipo, descripcion) VALUES (?, ?)`, [tipo, descripcion], function(err) {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.json({ id: this.lastID });
+    }
+  });
+});
+
+app.delete('/api/bitacora/:id', (req, res) => {
+  db.run(`DELETE FROM bitacora WHERE id = ?`, [req.params.id], () => {
+    res.json({ success: true });
+  });
+});
+
+app.get('/api/encomiendas', (req, res) => {
+  db.all(`SELECT e.*, r.nombre as residente_nombre, u.numero as unidad_numero
+          FROM encomiendas e
+          LEFT JOIN residentes r ON e.residente_id = r.id
+          LEFT JOIN unidades u ON e.unidad_id = u.id
+          ORDER BY e.fecha_ingreso DESC`, (err, rows) => {
+    res.json(rows || []);
+  });
+});
+
+app.post('/api/encomiendas', (req, res) => {
+  const { residente_id, remitente, descripcion } = req.body;
+  db.run(`INSERT INTO encomiendas (residente_id, remitente, descripcion)
+          VALUES (?, ?, ?)`, [residente_id, remitente, descripcion], function(err) {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.json({ id: this.lastID });
+    }
+  });
+});
+
+app.put('/api/encomiendas/:id/entregar', (req, res) => {
+  db.run(`UPDATE encomiendas SET estado = 'entregado', fecha_retiro = CURRENT_TIMESTAMP WHERE id = ?`, [req.params.id], () => {
+    res.json({ success: true });
+  });
+});
+
+app.delete('/api/encomiendas/:id', (req, res) => {
+  db.run(`DELETE FROM encomiendas WHERE id = ?`, [req.params.id], () => {
+    res.json({ success: true });
+  });
+});
+
+app.get('/api/visitas', (req, res) => {
+  db.all(`SELECT v.*, u.numero as unidad_numero
+          FROM visitas v
+          LEFT JOIN unidades u ON v.unidad_destino_id = u.id
+          ORDER BY v.fecha_entrada DESC`, (err, rows) => {
+    res.json(rows || []);
+  });
+});
+
+app.post('/api/visitas', (req, res) => {
+  const { visitante_nombre, visitante_rut, visitante_telefono, motivo, unidad_destino_id, placa_vehiculo } = req.body;
+  db.run(`INSERT INTO visitas (visitante_nombre, visitante_rut, visitante_telefono, motivo, unidad_destino_id, placa_vehiculo)
+          VALUES (?, ?, ?, ?, ?, ?)`, 
+    [visitante_nombre, visitante_rut || null, visitante_telefono || null, motivo || null, unidad_destino_id || null, placa_vehiculo || null], 
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.json({ id: this.lastID });
+      }
+    });
+});
+
+app.put('/api/visitas/:id/salir', (req, res) => {
+  db.run(`UPDATE visitas SET fecha_salida = CURRENT_TIMESTAMP, estado = 'finalizada' WHERE id = ?`, [req.params.id], () => {
+    res.json({ success: true });
+  });
+});
+
+app.delete('/api/visitas/:id', (req, res) => {
+  db.run(`DELETE FROM visitas WHERE id = ?`, [req.params.id], () => {
+    res.json({ success: true });
+  });
+});
+
+app.get('/api/morosos-detalle', (req, res) => {
+  db.all(`SELECT 
+            r.id, r.nombre, r.email, r.telefono,
+            u.numero as unidad_numero,
+            COUNT(gu.id) as meses_moroso,
+            SUM(gu.monto_total + gu.interes_mora) as deuda_total
+          FROM residentes r
+          JOIN unidades u ON r.id = u.residente_id
+          JOIN gastos_unidad gu ON gu.unidad_id = u.id
+          WHERE gu.pagado = 0
+          GROUP BY r.id
+          ORDER BY deuda_total DESC`, (err, rows) => {
+    res.json(rows || []);
+  });
+});
+
+// ==================================================
+// COMUNICADOS (CRUD + Archivos)
+// ==================================================
+
+// Crear carpetas para uploads
+const uploadsDir = path.join(__dirname, 'uploads');
+const imagenesDir = path.join(uploadsDir, 'imagenes');
+const adjuntosDir = path.join(uploadsDir, 'adjuntos');
+
+if (!fs.existsSync(imagenesDir)) fs.mkdirSync(imagenesDir, { recursive: true });
+if (!fs.existsSync(adjuntosDir)) fs.mkdirSync(adjuntosDir, { recursive: true });
+
+const storageImagen = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, imagenesDir),
+  filename: (req, file, cb) => cb(null, Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname))
+});
+
+const storageAdjunto = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, adjuntosDir),
+  filename: (req, file, cb) => cb(null, Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname))
+});
+
+const uploadImagen = multer({ storage: storageImagen, limits: { fileSize: 5 * 1024 * 1024 } });
+const uploadAdjunto = multer({ storage: storageAdjunto, limits: { fileSize: 10 * 1024 * 1024 } });
+
+app.use('/uploads', express.static(uploadsDir));
+
+app.get('/api/comunicados', (req, res) => {
+  db.all(`SELECT * FROM comunicados ORDER BY fecha DESC`, (err, rows) => {
+    res.json(rows || []);
+  });
+});
+
+app.get('/api/comunicados-residente', (req, res) => {
+  const { email } = req.query;
+  db.get(`SELECT u.id as unidad_id FROM unidades u JOIN residentes r ON u.residente_id = r.id WHERE r.email = ?`, [email], (err, residente) => {
+    if (err || !residente) return res.json([]);
+    db.all(`SELECT * FROM comunicados 
+            WHERE destinatarios LIKE '%todos%'
+               OR destinatarios LIKE ? 
+            ORDER BY fecha DESC`, [`%${residente.unidad_id}%`], (err, rows) => {
+      res.json(rows || []);
+    });
+  });
+});
+
+app.post('/api/comunicados', async (req, res) => {
+  const { titulo, contenido, autor, autor_rol, destinatarios, residentes_seleccionados, adjunto_url, adjunto_nombre } = req.body;
+  
+  db.run(`INSERT INTO comunicados (titulo, contenido, autor, autor_rol, destinatarios, adjunto_url, adjunto_nombre)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [titulo, contenido, autor, autor_rol, JSON.stringify({ tipo: destinatarios, ids: residentes_seleccionados || [] }), adjunto_url || null, adjunto_nombre || null],
+    async function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        let destinatariosEmails = [];
+        if (destinatarios === 'todos') {
+          destinatariosEmails = await new Promise(resolve => db.all(`SELECT email, nombre FROM residentes WHERE email IS NOT NULL AND email != ''`, (err, rows) => resolve(rows || [])));
+        } else if (destinatarios === 'morosos') {
+          destinatariosEmails = await new Promise(resolve => db.all(`SELECT DISTINCT r.email, r.nombre FROM residentes r JOIN unidades u ON r.id = u.residente_id JOIN gastos_unidad gu ON gu.unidad_id = u.id WHERE gu.pagado = 0 AND r.email IS NOT NULL`, (err, rows) => resolve(rows || [])));
+        } else if (residentes_seleccionados && residentes_seleccionados.length > 0) {
+          destinatariosEmails = await new Promise(resolve => db.all(`SELECT email, nombre FROM residentes WHERE id IN (${residentes_seleccionados.join(',')}) AND email IS NOT NULL`, (err, rows) => resolve(rows || [])));
+        }
+        
+        for (const dest of destinatariosEmails) {
+          if (dest.email && dest.email.includes('@')) {
+            enviarComunicadoEmail(dest, { titulo, contenido, autor_rol });
+          }
+        }
+        res.json({ id: this.lastID });
+      }
+    });
+});
+
+app.delete('/api/comunicados/:id', (req, res) => {
+  db.run(`DELETE FROM comunicados WHERE id = ?`, [req.params.id], () => {
+    res.json({ success: true });
+  });
+});
+
+app.post('/api/upload-imagen', uploadImagen.single('imagen'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No se recibió ninguna imagen' });
+  res.json({ url: `/uploads/imagenes/${req.file.filename}` });
+});
+
+app.post('/api/upload-adjunto', uploadAdjunto.single('adjunto'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
+  res.json({ url: `/uploads/adjuntos/${req.file.filename}`, nombre: req.file.originalname });
+});
+
+// ==================================================
+// CONFIGURACIÓN DE EMAIL
+// ==================================================
+let emailConfig = {};
+
+app.get('/api/email-config', (req, res) => {
+  res.json({ email_user: process.env.EMAIL_USER || '', configured: !!process.env.EMAIL_USER });
+});
+
+app.post('/api/email-config', (req, res) => {
+  const { email_user, email_pass } = req.body;
+  process.env.EMAIL_USER = email_user;
+  process.env.EMAIL_PASS = email_pass;
+  emailTransporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: email_user, pass: email_pass }
+  });
+  res.json({ success: true });
+});
+
+app.post('/api/email-test', async (req, res) => {
+  const { email } = req.body;
+  try {
+    await emailTransporter.sendMail({
+      from: `"Kubox Test" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: '✅ Prueba de configuración de email',
+      html: '<h1>¡Configuración exitosa!</h1><p>Este es un email de prueba de Kubox.</p>'
+    });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+// ========== MANTENIMIENTO ==========
+app.get('/api/equipos', (req, res) => {
+    db.all('SELECT * FROM equipos WHERE activo = 1', (err, rows) => {
+        if (err) res.status(500).json({ error: err.message });
+        else res.json(rows);
+    });
+});
+
+app.post('/api/equipos', (req, res) => {
+    const { nombre, ubicacion, tipo, frecuencia_dias, proveedor, contacto } = req.body;
+    db.run('INSERT INTO equipos (nombre, ubicacion, tipo, frecuencia_dias, proveedor, contacto) VALUES (?, ?, ?, ?, ?, ?)',
+        [nombre, ubicacion, tipo, frecuencia_dias, proveedor, contacto],
+        function(err) {
+            if (err) res.status(500).json({ error: err.message });
+            else res.json({ id: this.lastID });
+        });
+});
+
+app.get('/api/mantenciones', (req, res) => {
+    db.all('SELECT * FROM mantenciones_programadas ORDER BY fecha_programada ASC', (err, rows) => {
+        if (err) res.status(500).json({ error: err.message });
+        else res.json(rows);
+    });
+});
+
+app.post('/api/mantenciones', (req, res) => {
+    const { equipo_id, fecha_programada, descripcion, prioridad, responsable } = req.body;
+    db.run('INSERT INTO mantenciones_programadas (equipo_id, fecha_programada, descripcion, prioridad, estado, responsable) VALUES (?, ?, ?, ?, ?, ?)',
+        [equipo_id, fecha_programada, descripcion || 'Mantención programada', prioridad || 'normal', 'pendiente', responsable || null],
+        function(err) {
+            if (err) res.status(500).json({ error: err.message });
+            else res.json({ id: this.lastID });
+        });
+});
+
+app.put('/api/mantenciones/:id', (req, res) => {
+    const { estado, fecha_realizacion, observaciones } = req.body;
+    db.run('UPDATE mantenciones_programadas SET estado = ?, fecha_realizacion = ?, observaciones = ? WHERE id = ?',
+        [estado, fecha_realizacion, observaciones, req.params.id],
+        function(err) {
+            if (err) res.status(500).json({ error: err.message });
+            else res.json({ updated: this.changes });
+        });
+});
+app.get('/api/encomiendas/residente/:email', (req, res) => {
+    const email = req.params.email;
+    db.all('SELECT * FROM encomiendas WHERE residente_email = ? ORDER BY fecha_ingreso DESC', [email], (err, rows) => {
+        if (err) res.status(500).json({ error: err.message });
+        else res.json(rows);
+    });
+});
+// ========== GASTOS COMUNES ==========
+app.get('/api/gastos-generales', (req, res) => {
+    db.all('SELECT * FROM gastos_generales ORDER BY fecha DESC', (err, rows) => {
+        if (err) res.status(500).json({ error: err.message });
+        else res.json(rows);
+    });
+});
+
+app.post('/api/gastos-generales', (req, res) => {
+    const { concepto, monto, fecha, categoria, proveedor } = req.body;
+    db.run('INSERT INTO gastos_generales (concepto, monto, fecha, categoria, proveedor) VALUES (?, ?, ?, ?, ?)',
+        [concepto, monto, fecha, categoria, proveedor], function(err) {
+            if (err) res.status(500).json({ error: err.message });
+            else res.json({ id: this.lastID });
+        });
+});
+
+app.get('/api/gastos-comunes', (req, res) => {
+    db.all(`SELECT 
+                gu.*, 
+                u.numero as unidad_numero,
+                gc.periodo, 
+                gc.concepto, 
+                gc.fecha_vencimiento 
+            FROM gastos_unidad gu 
+            JOIN unidades u ON u.id = gu.unidad_id
+            JOIN gastos_comunes gc ON gc.id = gu.gasto_comun_id 
+            ORDER BY gc.periodo DESC, u.numero`, 
+        (err, rows) => {
+            if (err) {
+                console.log('Error:', err.message);
+                return res.status(500).json({ error: err.message });
+            }
+            res.json(rows);
+        }
+    );
+});
+
+app.post('/api/generar-cobros', (req, res) => {
+    const { periodo, concepto, monto_total, fecha_vencimiento } = req.body;
+    
+    // 1. Insertar el gasto común principal
+    db.run(`INSERT INTO gastos_comunes (condominio_id, periodo, concepto, monto_total, fecha_emision, fecha_vencimiento, pagado) 
+            VALUES (1, ?, ?, ?, date('now'), ?, 0)`,
+        [periodo, concepto, monto_total, fecha_vencimiento],
+        function(err) {
+            if (err) {
+                console.log('Error insertando gasto_comun:', err.message);
+                return res.status(500).json({ error: err.message });
+            }
+            
+            const gastoComunId = this.lastID;
+            
+            // 2. Obtener todas las unidades
+            db.all('SELECT id FROM unidades', (err, unidades) => {
+                if (err) {
+                    console.log('Error obteniendo unidades:', err.message);
+                    return res.status(500).json({ error: err.message });
+                }
+                
+                if (!unidades || unidades.length === 0) {
+                    return res.status(400).json({ error: 'No hay unidades registradas' });
+                }
+                
+                let montoPorUnidad = Math.round(monto_total / unidades.length);
+                let insertados = 0;
+                
+                // 3. Insertar el gasto por cada unidad
+                unidades.forEach(u => {
+                    db.run(`INSERT INTO gastos_unidad 
+                            (gasto_comun_id, unidad_id, monto_base, monto_total, pagado) 
+                            VALUES (?, ?, ?, ?, 0)`,
+                        [gastoComunId, u.id, montoPorUnidad, montoPorUnidad],
+                        function(err) {
+                            if (err) console.log('Error insertando gasto_unidad:', err.message);
+                            insertados++;
+                            if (insertados === unidades.length) {
+                                res.json({ 
+                                    success: true, 
+                                    message: `Cobros generados para ${unidades.length} unidades`,
+                                    monto_por_unidad: montoPorUnidad
+                                });
+                            }
+                        }
+                    );
+                });
+            });
+        }
+    );
+});
+
+app.post('/api/registrar-pago', (req, res) => {
+    const { gasto_comun_id, unidad_id, monto, fecha_pago, metodo_pago } = req.body;
+    db.run('INSERT INTO pagos (gasto_comun_id, unidad_id, monto, fecha_pago, metodo_pago) VALUES (?, ?, ?, ?, ?)',
+        [gasto_comun_id, unidad_id, monto, fecha_pago, metodo_pago], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            db.run('UPDATE gastos_comunes SET estado = ?, fecha_pago = ? WHERE id = ?',
+                ['pagado', fecha_pago, gasto_comun_id]);
+            res.json({ success: true });
+        });
+});
+
+app.get('/api/estadisticas-gastos', (req, res) => {
+    // Total de gastos generales
+    db.get('SELECT SUM(monto) as total_monto FROM gastos_generales', (err, gastos) => {
+        if (err) {
+            console.log('Error en gastos_generales:', err.message);
+            return res.status(500).json({ error: err.message });
+        }
+        
+        // Gastos pendientes por unidad
+        db.get('SELECT COUNT(*) as pendientes, SUM(monto_total) as monto_pendiente FROM gastos_unidad WHERE pagado = 0', (err2, pendientes) => {
+            if (err2) {
+                console.log('Error en gastos_unidad:', err2.message);
+                return res.status(500).json({ error: err2.message });
+            }
+            
+            res.json({ 
+                total_gastos: gastos?.total_monto || 0, 
+                pendientes: pendientes?.pendientes || 0, 
+                monto_pendiente: pendientes?.monto_pendiente || 0 
+            });
+        });
+    });
+});
+app.get('/api/gastos-comunes/unidad/:unidadId', (req, res) => {
+    const unidadId = req.params.unidadId;
+    db.all('SELECT * FROM gastos_comunes WHERE unidad_id = ? ORDER BY periodo DESC', [unidadId], (err, rows) => {
+        if (err) res.status(500).json({ error: err.message });
+        else res.json(rows);
+    });
+});
+// Obtener residente por email
+app.get('/api/residentes/email/:email', (req, res) => {
+    const email = req.params.email;
+    db.get('SELECT * FROM residentes WHERE email = ?', [email], (err, row) => {
+        if (err) res.status(500).json({ error: err.message });
+        else res.json(row);
+    });
+});
+
+// Obtener unidad por residente_id
+app.get('/api/unidades/residente/:residenteId', (req, res) => {
+    const residenteId = req.params.residenteId;
+    db.get('SELECT * FROM unidades WHERE residente_id = ?', [residenteId], (err, row) => {
+        if (err) res.status(500).json({ error: err.message });
+        else res.json(row);
+    });
+});
+app.get('/api/gastos-unidad', (req, res) => {
+    db.all(`SELECT gu.*, u.numero as unidad, gc.periodo, gc.concepto, gc.fecha_vencimiento 
+            FROM gastos_unidad gu 
+            JOIN unidades u ON u.id = gu.unidad_id
+            JOIN gastos_comunes gc ON gc.id = gu.gasto_comun_id 
+            ORDER BY gc.periodo DESC, u.numero`, 
+        (err, rows) => {
+            if (err) {
+                console.log('Error:', err.message);
+                return res.status(500).json({ error: err.message });
+            }
+            res.json(rows);
+        }
+    );
+});
+app.post('/api/pagar-gasto-unidad', (req, res) => {
+    const { gasto_unidad_id, fecha_pago } = req.body;
+    
+    db.run('UPDATE gastos_unidad SET pagado = 1, fecha_pago = ? WHERE id = ?',
+        [fecha_pago, gasto_unidad_id],
+        function(err) {
+            if (err) {
+                console.log('Error:', err.message);
+                return res.status(500).json({ error: err.message });
+            }
+            res.json({ success: true });
+        }
+    );
+});
+// Limpiar todos los gastos comunes y cobros por unidad
+app.delete('/api/limpiar-gastos-comunes', (req, res) => {
+    db.run('DELETE FROM gastos_unidad', (err) => {
+        if (err) {
+            console.log('Error eliminando gastos_unidad:', err.message);
+            return res.status(500).json({ error: err.message });
+        }
+        
+        db.run('DELETE FROM gastos_comunes', (err) => {
+            if (err) {
+                console.log('Error eliminando gastos_comunes:', err.message);
+                return res.status(500).json({ error: err.message });
+            }
+            res.json({ success: true, message: 'Todos los gastos han sido eliminados' });
+        });
+    });
+});
+// ========== GASTOS ==========
+
+// Obtener todos los gastos
+app.get('/api/gastos', (req, res) => {
+    db.all('SELECT * FROM gastos ORDER BY fecha DESC', (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+// Obtener categorías de gastos
+app.get('/api/categorias-gastos', (req, res) => {
+    db.all('SELECT * FROM categorias_gastos ORDER BY nombre', (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+// Crear nuevo gasto
+app.post('/api/gastos', (req, res) => {
+    const { concepto, monto, fecha, categoria, proveedor, es_cuotas, total_cuotas, cuota_actual, monto_cuota } = req.body;
+    
+    db.run(`INSERT INTO gastos (concepto, monto, fecha, categoria, proveedor, es_cuotas, total_cuotas, cuota_actual, monto_cuota) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [concepto, monto, fecha, categoria, proveedor, es_cuotas ? 1 : 0, total_cuotas || 1, cuota_actual || 1, monto_cuota || monto],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ id: this.lastID });
+        });
+});
+
+// Actualizar gasto
+app.put('/api/gastos/:id', (req, res) => {
+    const { concepto, monto, fecha, categoria, proveedor, es_cuotas, total_cuotas, cuota_actual, monto_cuota } = req.body;
+    
+    db.run(`UPDATE gastos SET concepto = ?, monto = ?, fecha = ?, categoria = ?, proveedor = ?, es_cuotas = ?, total_cuotas = ?, cuota_actual = ?, monto_cuota = ? WHERE id = ?`,
+        [concepto, monto, fecha, categoria, proveedor, es_cuotas ? 1 : 0, total_cuotas || 1, cuota_actual || 1, monto_cuota || monto, req.params.id],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ updated: this.changes });
+        });
+});
+
+// Eliminar gasto
+app.get('/api/gastos', (req, res) => {
+    const sql = 'SELECT id, concepto, monto, fecha, categoria, proveedor, es_cuotas, total_cuotas, cuota_actual, monto_cuota FROM gastos ORDER BY fecha DESC, id DESC';
+    db.all(sql, (err, rows) => {
+        if (err) {
+            return res.status(500).json({ error: err.message });
+        }
+        res.json(rows);
+    });
+});
+    console.log('🔍 GET /api/gastos ejecutando...');
+    
+    const sql = 'SELECT id, concepto, monto, fecha, categoria, proveedor, es_cuotas, total_cuotas, cuota_actual, monto_cuota FROM gastos ORDER BY fecha DESC, id DESC';
+    
+    db.all(sql, [], (err, rows) => {
+        if (err) {
+            console.error('❌ Error en consulta:', err.message);
+            return res.status(500).json({ error: err.message });
+        }
+        
+        console.log(`✅ Enviando ${rows.length} gastos`);
+        res.json(rows);
+    });
+});
+=================================================
+// INICIAR SERVIDOR
+// ==================================================
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`✅ Backend Kubox corriendo en http://localhost:${PORT}`);
+});
