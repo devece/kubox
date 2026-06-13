@@ -94,7 +94,7 @@ function ResidenteDashboard({ residenteEmail }) {
             <XCircle className="w-6 h-6 text-red-400" />
             <h3 className="text-white font-semibold">Deuda Pendiente</h3>
           </div>
-          <p className="text-3xl font-bold text-white"></p>
+          <p className="text-3xl font-bold text-white">${resumenGastos.pendiente.toLocaleString()}</p>
           <p className="text-white/40 text-sm mt-2">Gastos comunes por pagar</p>
         </div>
         <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-6 border border-white/20">
@@ -102,7 +102,7 @@ function ResidenteDashboard({ residenteEmail }) {
             <CheckCircle className="w-6 h-6 text-green-400" />
             <h3 className="text-white font-semibold">Total Pagado</h3>
           </div>
-          <p className="text-3xl font-bold text-white"></p>
+          <p className="text-3xl font-bold text-white">${resumenGastos.pagado.toLocaleString()}</p>
           <p className="text-white/40 text-sm mt-2">Historial de pagos</p>
         </div>
       </div>
@@ -127,7 +127,7 @@ function ResidenteDashboard({ residenteEmail }) {
                       <span className="flex items-center gap-1">
                         <Calendar size={14} /> {g.periodo}
                       </span>
-                      <span className="font-semibold text-white"></span>
+                      <span className="font-semibold text-white">${Number(g.monto_total || 0).toLocaleString()}</span>
                     </div>
                   </div>
                   <span className={'px-2 py-1 rounded-full text-xs ' + getEstadoColor(g.pagado === 1 ? 'pagado' : 'pendiente')}>

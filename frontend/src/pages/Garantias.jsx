@@ -90,7 +90,7 @@ function Garantias({ user }) {
                   <td className="p-4">Unidad {getUnidadNumero(r.unidad_id)}</td>
                   <td className="p-4">{r.fecha}</td>
                   <td className="p-4"><span className={'px-2 py-1 rounded-full text-xs ' + getEstadoColor(r.estado)}>{r.estado}</span></td>
-                  <td className="p-4"></td>
+                  <td className="p-4 text-green-400 font-semibold">${(r.costo_total || 0).toLocaleString()}</td>
                   <td className="p-4">
                     {r.garantia_aplicada ? 
                       <span className="text-red-400 flex items-center gap-1"><XCircle size={16} /> Aplicada</span> : 

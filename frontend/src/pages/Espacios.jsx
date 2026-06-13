@@ -134,7 +134,7 @@ function Espacios() {
                 {e.garantia > 0 && (
                   <div className="flex items-center gap-2 text-white/70">
                     <Shield size={14} className="text-white/50" />
-                    <span className="text-blue-400">Garantia: </span>
+                    <span className="text-blue-400">Garantia: ${(e.garantia || 0).toLocaleString()}</span>
                   </div>
                 )}
                 {e.tiene_juegos_inflables === 1 && (

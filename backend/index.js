@@ -435,6 +435,8 @@ app.post('/api/pagar-gasto-unidad', (req, res) => {
 // ============================================
 // CONSERJERIA
 // ============================================
+
+// BITÁCORA
 app.get('/api/bitacora', (req, res) => {
     db.all('SELECT * FROM bitacora ORDER BY fecha DESC', (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
@@ -442,17 +444,105 @@ app.get('/api/bitacora', (req, res) => {
     });
 });
 
+app.post('/api/bitacora', (req, res) => {
+    const { tipo, descripcion, conserje_nombre } = req.body;
+    db.run(`INSERT INTO bitacora (tipo, descripcion, fecha, conserje_nombre) VALUES (?, ?, datetime('now'), ?)`,
+        [tipo || 'info', descripcion, conserje_nombre || 'Conserje'],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ id: this.lastID });
+        });
+});
+
+app.delete('/api/bitacora/:id', (req, res) => {
+    db.run('DELETE FROM bitacora WHERE id = ?', [req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ deleted: this.changes });
+    });
+});
+
+// ENCOMIENDAS
 app.get('/api/encomiendas', (req, res) => {
-    db.all('SELECT * FROM encomiendas ORDER BY fecha_ingreso DESC', (err, rows) => {
+    db.all(`SELECT e.*, r.nombre as residente_nombre, u.numero as unidad_numero
+            FROM encomiendas e
+            LEFT JOIN residentes r ON r.id = e.residente_id
+            LEFT JOIN unidades u ON u.residente_id = r.id
+            ORDER BY e.fecha_ingreso DESC`, (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows);
     });
 });
 
+app.get('/api/encomiendas/residente/:email', (req, res) => {
+    const email = req.params.email;
+    db.get('SELECT id FROM residentes WHERE email = ?', [email], (err, residente) => {
+        if (err || !residente) return res.status(404).json({ error: 'Residente no encontrado' });
+        db.all('SELECT * FROM encomiendas WHERE residente_id = ? ORDER BY fecha_ingreso DESC',
+            [residente.id], (err, rows) => {
+                if (err) return res.status(500).json({ error: err.message });
+                res.json(rows || []);
+            });
+    });
+});
+
+app.post('/api/encomiendas', (req, res) => {
+    const { residente_id, remitente, descripcion } = req.body;
+    db.run(`INSERT INTO encomiendas (residente_id, remitente, descripcion, fecha_ingreso, estado) VALUES (?, ?, ?, datetime('now'), 'pendiente')`,
+        [residente_id, remitente, descripcion],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ id: this.lastID });
+        });
+});
+
+app.put('/api/encomiendas/:id/entregar', (req, res) => {
+    db.run(`UPDATE encomiendas SET estado = 'entregado', fecha_retiro = datetime('now') WHERE id = ?`,
+        [req.params.id], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ updated: this.changes });
+        });
+});
+
+app.delete('/api/encomiendas/:id', (req, res) => {
+    db.run('DELETE FROM encomiendas WHERE id = ?', [req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ deleted: this.changes });
+    });
+});
+
+// VISITAS
 app.get('/api/visitas', (req, res) => {
-    db.all('SELECT * FROM visitas ORDER BY fecha_entrada DESC', (err, rows) => {
+    db.all(`SELECT v.*, u.numero as unidad_numero
+            FROM visitas v
+            LEFT JOIN unidades u ON u.id = v.unidad_destino_id
+            ORDER BY v.fecha_entrada DESC`, (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows);
+    });
+});
+
+app.post('/api/visitas', (req, res) => {
+    const { visitante_nombre, visitante_rut, visitante_telefono, motivo, unidad_destino_id, placa_vehiculo } = req.body;
+    db.run(`INSERT INTO visitas (visitante_nombre, visitante_rut, visitante_telefono, motivo, unidad_destino_id, placa_vehiculo, fecha_entrada, estado) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 'activa')`,
+        [visitante_nombre, visitante_rut || null, visitante_telefono || null, motivo || null, unidad_destino_id || null, placa_vehiculo || null],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ id: this.lastID });
+        });
+});
+
+app.put('/api/visitas/:id/salir', (req, res) => {
+    db.run(`UPDATE visitas SET estado = 'finalizada', fecha_salida = datetime('now') WHERE id = ?`,
+        [req.params.id], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ updated: this.changes });
+        });
+});
+
+app.delete('/api/visitas/:id', (req, res) => {
+    db.run('DELETE FROM visitas WHERE id = ?', [req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ deleted: this.changes });
     });
 });
 
@@ -622,10 +712,16 @@ app.get('/api/comunicados', (req, res) => {
 
 // Crear nuevo comunicado
 app.post('/api/comunicados', (req, res) => {
-    const { titulo, contenido, autor, destino } = req.body;
-    db.run(`INSERT INTO comunicados (titulo, contenido, autor, destino, fecha) 
-            VALUES (?, ?, ?, ?, datetime('now'))`,
-        [titulo, contenido, autor || 'Administrador', destino || 'todos'],
+    const { titulo, contenido, autor, autor_rol, destinatarios, residentes_seleccionados, adjunto_url, adjunto_nombre } = req.body;
+    let destinoJSON;
+    if (destinatarios === 'seleccionados') {
+        destinoJSON = JSON.stringify({ tipo: 'seleccionados', ids: residentes_seleccionados || [] });
+    } else {
+        destinoJSON = JSON.stringify({ tipo: destinatarios || 'todos' });
+    }
+    db.run(`INSERT INTO comunicados (titulo, contenido, autor, autor_rol, destino, adjunto_url, adjunto_nombre, fecha)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+        [titulo, contenido, autor || 'Administrador', autor_rol || 'admin', destinoJSON, adjunto_url || null, adjunto_nombre || null],
         function(err) {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ id: this.lastID });
@@ -663,6 +759,34 @@ app.put('/api/config-edificio', (req, res) => {
             res.json({ updated: this.changes });
         });
 });
+// ============================================
+// MOROSOS DETALLE (para ConserjeDashboard)
+// ============================================
+app.get('/api/morosos-detalle', (req, res) => {
+    const sql = `
+        SELECT r.id, r.nombre, r.email, u.numero as unidad_numero,
+               SUM(gu.monto_total) as deuda_total,
+               COUNT(DISTINCT gc.periodo) as meses_moroso
+        FROM residentes r
+        JOIN unidades u ON u.residente_id = r.id
+        JOIN gastos_unidad gu ON gu.unidad_id = u.id
+        JOIN gastos_comunes gc ON gc.id = gu.gasto_comun_id
+        WHERE gu.pagado = 0
+        GROUP BY r.id, r.nombre, r.email, u.numero
+        ORDER BY deuda_total DESC`;
+    db.all(sql, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows || []);
+    });
+});
+
+// ============================================
+// COLUMNAS FALTANTES EN COMUNICADOS
+// ============================================
+db.run('ALTER TABLE comunicados ADD COLUMN autor_rol TEXT DEFAULT "admin"', (e) => {});
+db.run('ALTER TABLE comunicados ADD COLUMN adjunto_url TEXT', (e) => {});
+db.run('ALTER TABLE comunicados ADD COLUMN adjunto_nombre TEXT', (e) => {});
+
 // ============================================
 // INICIAR SERVIDOR
 // ============================================
