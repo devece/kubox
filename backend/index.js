@@ -979,6 +979,198 @@ app.get('/api/setup', async (req, res) => {
 });
 
 // ============================================
+// SEED - DATOS DE PRUEBA
+// ============================================
+app.get('/api/seed', async (req, res) => {
+    if (req.query.key !== 'kubox-init-2026') {
+        return res.status(403).json({ error: 'Acceso denegado' });
+    }
+
+    const runAsync = (sql, params = []) => new Promise((resolve, reject) => {
+        db.run(sql, params, function(err) { err ? reject(err) : resolve(this); });
+    });
+    const getAsync = (sql, params = []) => new Promise((resolve, reject) => {
+        db.get(sql, params, (err, row) => err ? reject(err) : resolve(row));
+    });
+
+    try {
+        // ── Residentes ──
+        const residentes = [
+            { nombre: 'Juan Pérez', email: 'juan@kubox.com', telefono: '+56912345678' },
+            { nombre: 'María González', email: 'maria@kubox.com', telefono: '+56923456789' },
+            { nombre: 'Carlos Rodríguez', email: 'carlos@kubox.com', telefono: '+56934567890' },
+            { nombre: 'Ana Martínez', email: 'ana@kubox.com', telefono: '+56945678901' },
+            { nombre: 'Pedro Sánchez', email: 'pedro@kubox.com', telefono: '+56956789012' },
+            { nombre: 'Laura Torres', email: 'laura@kubox.com', telefono: '+56967890123' }
+        ];
+        const resIds = [];
+        for (const r of residentes) {
+            const exist = await getAsync('SELECT id FROM residentes WHERE email = ?', [r.email]);
+            if (exist) { resIds.push(exist.id); continue; }
+            const result = await runAsync(
+                'INSERT INTO residentes (nombre, email, telefono, condominio_id) VALUES (?, ?, ?, 1)',
+                [r.nombre, r.email, r.telefono]
+            );
+            resIds.push(result.lastID);
+        }
+
+        // ── Usuarios residente ──
+        const bcrypt = require('bcrypt');
+        for (const r of residentes) {
+            const hash = await bcrypt.hash('123456', 10);
+            await runAsync(`INSERT OR IGNORE INTO usuarios (email, password, rol) VALUES (?, ?, 'residente')`, [r.email, hash]);
+        }
+
+        // ── Unidades ──
+        const unidades = [
+            { numero: '101', torre: 'A', tipo: 'departamento', metros_cuadrados: 65 },
+            { numero: '102', torre: 'A', tipo: 'departamento', metros_cuadrados: 72 },
+            { numero: '201', torre: 'A', tipo: 'departamento', metros_cuadrados: 65 },
+            { numero: '202', torre: 'A', tipo: 'departamento', metros_cuadrados: 80 },
+            { numero: '101', torre: 'B', tipo: 'departamento', metros_cuadrados: 55 },
+            { numero: '102', torre: 'B', tipo: 'departamento', metros_cuadrados: 90 }
+        ];
+        const uniIds = [];
+        for (let i = 0; i < unidades.length; i++) {
+            const u = unidades[i];
+            const exist = await getAsync('SELECT id FROM unidades WHERE numero = ? AND torre = ?', [u.numero, u.torre]);
+            if (exist) { uniIds.push(exist.id); continue; }
+            const result = await runAsync(
+                'INSERT INTO unidades (numero, torre, tipo, metros_cuadrados, estacionamiento, bodega, residente_id) VALUES (?, ?, ?, ?, 1, 0, ?)',
+                [u.numero, u.torre, u.tipo, u.metros_cuadrados, resIds[i]]
+            );
+            uniIds.push(result.lastID);
+        }
+
+        // ── Configuración edificio ──
+        await runAsync(`UPDATE config_edificio SET
+            nombre_edificio = 'Edificio Kubox',
+            banco = 'Banco Estado',
+            tipo_cuenta = 'Cuenta Corriente',
+            numero_cuenta = '12345678',
+            rut_empresa = '76.123.456-7',
+            email_contacto = 'admin@kubox.com',
+            telefono_contacto = '+56922334455',
+            instrucciones_pago = 'Transferir al RUT indicado con glosa: Gasto Común + Número de Unidad'
+            WHERE id = 1`);
+
+        // ── Gastos ──
+        const gastos = [
+            { concepto: 'Mantención ascensor', monto: 180000, fecha: '2026-06-01', categoria: 'Mantenimiento', proveedor: 'TecnoLift' },
+            { concepto: 'Limpieza mensual', monto: 95000, fecha: '2026-06-01', categoria: 'Limpieza', proveedor: 'LimpiaMax' },
+            { concepto: 'Consumo agua común', monto: 42000, fecha: '2026-06-01', categoria: 'Servicios', proveedor: 'ESSAL' },
+            { concepto: 'Energía áreas comunes', monto: 68000, fecha: '2026-06-01', categoria: 'Servicios', proveedor: 'CGE' },
+            { concepto: 'Seguro edificio', monto: 320000, fecha: '2026-06-01', categoria: 'Seguro', proveedor: 'Mapfre', es_cuotas: 1, total_cuotas: 12, cuota_actual: 6, monto_cuota: 26667 },
+            { concepto: 'Mantención jardines', monto: 55000, fecha: '2026-05-01', categoria: 'Mantenimiento', proveedor: 'Jardines del Valle' },
+            { concepto: 'Portería y seguridad', monto: 210000, fecha: '2026-05-01', categoria: 'Seguridad', proveedor: 'SecurePro' }
+        ];
+        for (const g of gastos) {
+            await runAsync(
+                'INSERT INTO gastos (concepto, monto, fecha, categoria, proveedor, es_cuotas, total_cuotas, cuota_actual, monto_cuota) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [g.concepto, g.monto, g.fecha, g.categoria, g.proveedor, g.es_cuotas||0, g.total_cuotas||1, g.cuota_actual||1, g.monto_cuota||g.monto]
+            );
+        }
+
+        // ── Espacios Comunes ──
+        const espacios = [
+            { nombre: 'Quincho', descripcion: 'Quincho con parrilla y zona de mesas', capacidad: 30, cobro_activo: 1, costo_dia_semana: 30000, costo_dia_festivo: 50000, garantia: 50000 },
+            { nombre: 'Sala de Eventos', descripcion: 'Sala multipropósito para eventos', capacidad: 50, cobro_activo: 1, costo_dia_semana: 20000, costo_dia_festivo: 35000, garantia: 30000 },
+            { nombre: 'Piscina', descripcion: 'Piscina temperada', capacidad: 20, cobro_activo: 0, requiere_autorizacion: 1 },
+            { nombre: 'Gimnasio', descripcion: 'Sala de ejercicios equipada', capacidad: 10, cobro_activo: 0 }
+        ];
+        const espIds = [];
+        for (const e of espacios) {
+            const result = await runAsync(
+                `INSERT INTO espacios_comunes (nombre, descripcion, capacidad, cobro_activo, requiere_autorizacion,
+                 costo_dia_semana, costo_dia_festivo, garantia, condominio_id,
+                 horario_semana_inicio, horario_semana_fin, horario_festivo_inicio, horario_festivo_fin)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, '10:00', '22:00', '10:00', '02:00')`,
+                [e.nombre, e.descripcion, e.capacidad, e.cobro_activo||0, e.requiere_autorizacion||0,
+                 e.costo_dia_semana||0, e.costo_dia_festivo||0, e.garantia||0]
+            );
+            espIds.push(result.lastID);
+        }
+
+        // ── Reservas ──
+        await runAsync(`INSERT INTO reservas (espacio_id, unidad_id, fecha, hora_inicio, hora_fin, motivo, estado, costo_total) VALUES (?, ?, '2026-06-14', '14:00', '22:00', 'Cumpleaños', 'aprobada', 30000)`, [espIds[0], uniIds[0]]);
+        await runAsync(`INSERT INTO reservas (espacio_id, unidad_id, fecha, hora_inicio, hora_fin, motivo, estado, costo_total) VALUES (?, ?, '2026-06-21', '10:00', '22:00', 'Reunión familiar', 'pendiente', 50000)`, [espIds[1], uniIds[2]]);
+        await runAsync(`INSERT INTO reservas (espacio_id, unidad_id, fecha, hora_inicio, hora_fin, motivo, estado, costo_total) VALUES (?, ?, '2026-05-18', '12:00', '22:00', 'Aniversario', 'finalizada', 30000)`, [espIds[0], uniIds[1]]);
+
+        // ── Multas ──
+        await runAsync(`INSERT INTO multas (unidad_id, fecha, motivo, monto, periodo, pagado) VALUES (?, '2026-05-10', 'Ruidos molestos después de las 22:00', 50000, 'mayo 2026', 0)`, [uniIds[3]]);
+        await runAsync(`INSERT INTO multas (unidad_id, fecha, motivo, monto, periodo, pagado, fecha_pago) VALUES (?, '2026-04-15', 'Mal uso del estacionamiento de visitas', 30000, 'abril 2026', 1, '2026-04-20')`, [uniIds[0]]);
+
+        // ── Comunicados ──
+        await runAsync(`INSERT INTO comunicados (titulo, contenido, autor, autor_rol, destino, fecha) VALUES (?, ?, 'admin@kubox.com', 'admin', '{"tipo":"todos"}', datetime('now', '-5 days'))`,
+            ['Corte de agua programado', '<p>Se informa a todos los residentes que el día <strong>sábado 15 de junio</strong> habrá corte de agua entre las 09:00 y las 14:00 hrs por mantención de red.</p>']);
+        await runAsync(`INSERT INTO comunicados (titulo, contenido, autor, autor_rol, destino, fecha) VALUES (?, ?, 'admin@kubox.com', 'admin', '{"tipo":"todos"}', datetime('now', '-15 days'))`,
+            ['Reglamento uso piscina temporada 2026', '<p>Recordamos que el uso de la piscina requiere reserva previa. Horario: 10:00 - 20:00 hrs. Máximo 20 personas simultáneas.</p>']);
+
+        // ── Bitácora ──
+        await runAsync(`INSERT INTO bitacora (tipo, descripcion, conserje_nombre, fecha) VALUES ('info', 'Inicio de turno. Edificio en orden.', 'Conserje', datetime('now', '-1 hour'))`);
+        await runAsync(`INSERT INTO bitacora (tipo, descripcion, conserje_nombre, fecha) VALUES ('alerta', 'Se detectó puerta del estacionamiento con falla en sensor. Se notificó a mantenimiento.', 'Conserje', datetime('now', '-3 hours'))`);
+        await runAsync(`INSERT INTO bitacora (tipo, descripcion, conserje_nombre, fecha) VALUES ('info', 'Visita técnica ascensor Torre A completada sin novedades.', 'Conserje', datetime('now', '-1 day'))`);
+
+        // ── Encomiendas ──
+        await runAsync(`INSERT INTO encomiendas (residente_id, remitente, descripcion, estado, fecha_ingreso) VALUES (?, 'MercadoLibre', 'Caja mediana - Electrónico', 'pendiente', datetime('now', '-2 hours'))`, [resIds[0]]);
+        await runAsync(`INSERT INTO encomiendas (residente_id, remitente, descripcion, estado, fecha_ingreso) VALUES (?, 'Falabella', 'Bolsa ropa', 'pendiente', datetime('now', '-1 day'))`, [resIds[2]]);
+        await runAsync(`INSERT INTO encomiendas (residente_id, remitente, descripcion, estado, fecha_ingreso, fecha_retiro) VALUES (?, 'Amazon', 'Caja grande', 'entregado', datetime('now', '-3 days'), datetime('now', '-2 days'))`, [resIds[1]]);
+
+        // ── Visitas ──
+        await runAsync(`INSERT INTO visitas (visitante_nombre, visitante_rut, motivo, unidad_destino_id, estado, fecha_entrada) VALUES ('Roberto Díaz', '15.234.567-8', 'Visita familiar', ?, 'activa', datetime('now', '-30 minutes'))`, [uniIds[0]]);
+        await runAsync(`INSERT INTO visitas (visitante_nombre, motivo, unidad_destino_id, estado, fecha_entrada, fecha_salida) VALUES ('Técnico Gas', 'Revisión instalación', ?, 'finalizada', datetime('now', '-2 hours'), datetime('now', '-1 hour'))`, [uniIds[3]]);
+
+        // ── Equipos y Mantenciones ──
+        const eq1 = await runAsync(`INSERT INTO equipos (nombre, ubicacion, tipo, frecuencia_dias, proveedor, contacto) VALUES ('Ascensor Torre A', 'Hall principal', 'Ascensor', 30, 'TecnoLift', '+56911111111')`);
+        const eq2 = await runAsync(`INSERT INTO equipos (nombre, ubicacion, tipo, frecuencia_dias, proveedor, contacto) VALUES ('Bomba de agua', 'Sala técnica subsuelo', 'Bombas', 90, 'HidroTec', '+56922222222')`);
+        const eq3 = await runAsync(`INSERT INTO equipos (nombre, ubicacion, tipo, frecuencia_dias, proveedor, contacto) VALUES ('Portón automático', 'Acceso vehicular', 'Portón', 60, 'AutoGate', '+56933333333')`);
+        await runAsync(`INSERT INTO mantenciones_programadas (equipo_id, fecha_programada, descripcion, prioridad, estado) VALUES (?, '2026-06-30', 'Mantención mensual ascensor', 'alta', 'pendiente')`, [eq1.lastID]);
+        await runAsync(`INSERT INTO mantenciones_programadas (equipo_id, fecha_programada, descripcion, prioridad, estado, fecha_realizacion, observaciones) VALUES (?, '2026-05-15', 'Revisión bomba', 'normal', 'completada', '2026-05-15', 'Sin novedades, presión correcta.')`, [eq2.lastID]);
+        await runAsync(`INSERT INTO mantenciones_programadas (equipo_id, fecha_programada, descripcion, prioridad, estado) VALUES (?, '2026-07-15', 'Lubricación y ajuste portón', 'normal', 'pendiente')`, [eq3.lastID]);
+
+        // ── Gastos Comunes por período (junio y mayo) ──
+        // Metros cuadrados por unidad: 65, 72, 65, 80, 55, 90 = 427 m² total
+        const periodos = [
+            { periodo: 'junio 2026', totalGastos: 585000, fecha_emision: '2026-06-01', fecha_vencimiento: '2026-06-10' },
+            { periodo: 'mayo 2026', totalGastos: 560000, fecha_emision: '2026-05-01', fecha_vencimiento: '2026-05-10' }
+        ];
+        for (const p of periodos) {
+            const gcResult = await runAsync(
+                `INSERT INTO gastos_comunes (condominio_id, periodo, concepto, monto_total, fecha_emision, fecha_vencimiento, pagado) VALUES (1, ?, 'Gastos Comunes', ?, ?, ?, 0)`,
+                [p.periodo, p.totalGastos, p.fecha_emision, p.fecha_vencimiento]
+            );
+            const gcId = gcResult.lastID;
+            const totalMetros = 427;
+            for (let i = 0; i < uniIds.length; i++) {
+                const metros = [65, 72, 65, 80, 55, 90][i];
+                const monto = Math.round(p.totalGastos * metros / totalMetros);
+                const pagado = (p.periodo === 'mayo 2026' && i < 4) ? 1 : 0;
+                await runAsync(
+                    `INSERT INTO gastos_unidad (gasto_comun_id, unidad_id, monto_base, monto_total, pagado) VALUES (?, ?, ?, ?, ?)`,
+                    [gcId, uniIds[i], monto, monto, pagado]
+                );
+            }
+        }
+
+        res.json({
+            success: true,
+            message: 'Datos de prueba cargados correctamente',
+            resumen: {
+                residentes: residentes.length,
+                unidades: unidades.length,
+                gastos: gastos.length,
+                espacios: espacios.length,
+                reservas: 3, multas: 2, comunicados: 2,
+                bitacora: 3, encomiendas: 3, visitas: 2, equipos: 3,
+                gastos_comunes_periodos: 2, gastos_unidad: 12
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message, stack: err.stack });
+    }
+});
+
+// ============================================
 // MOROSOS DETALLE (para ConserjeDashboard)
 // ============================================
 app.get('/api/morosos-detalle', (req, res) => {
