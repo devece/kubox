@@ -1,24 +1,14 @@
-# Variables de entorno
-.env
-.env.local
-.env.production
-
 # Dependencias
 node_modules/
 
-# Archivos de base de datos
+# Variables de entorno
+.env
+
+# Base de datos
 *.db
-*.sqlite
-kubox.db
 
-# Archivos de sistema
-.DS_Store
-Thumbs.db
+# Archivos subidos
+backend/uploads/
 
-# Archivos de log
-*.log
-npm-debug.log*
-
-# Carpetas de compilación
-dist/
-build/
+# Backups
+*.backup.old
