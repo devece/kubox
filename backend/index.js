@@ -760,6 +760,225 @@ app.put('/api/config-edificio', (req, res) => {
         });
 });
 // ============================================
+// SETUP INICIAL DE BASE DE DATOS
+// ============================================
+app.get('/api/setup', async (req, res) => {
+    if (req.query.key !== 'kubox-init-2026') {
+        return res.status(403).json({ error: 'Acceso denegado' });
+    }
+
+    const tablas = [
+        `CREATE TABLE IF NOT EXISTS usuarios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE,
+            password TEXT,
+            rol TEXT DEFAULT 'residente'
+        )`,
+        `CREATE TABLE IF NOT EXISTS residentes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT,
+            email TEXT UNIQUE,
+            telefono TEXT,
+            condominio_id INTEGER DEFAULT 1
+        )`,
+        `CREATE TABLE IF NOT EXISTS unidades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            numero TEXT,
+            torre TEXT,
+            tipo TEXT,
+            metros_cuadrados REAL DEFAULT 0,
+            estacionamiento INTEGER DEFAULT 0,
+            bodega INTEGER DEFAULT 0,
+            residente_id INTEGER
+        )`,
+        `CREATE TABLE IF NOT EXISTS gastos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            concepto TEXT,
+            monto REAL,
+            fecha TEXT,
+            categoria TEXT,
+            proveedor TEXT,
+            es_cuotas INTEGER DEFAULT 0,
+            total_cuotas INTEGER DEFAULT 1,
+            cuota_actual INTEGER DEFAULT 1,
+            monto_cuota REAL
+        )`,
+        `CREATE TABLE IF NOT EXISTS categorias_gastos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT UNIQUE
+        )`,
+        `CREATE TABLE IF NOT EXISTS gastos_comunes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            condominio_id INTEGER DEFAULT 1,
+            periodo TEXT,
+            concepto TEXT,
+            monto_total REAL,
+            fecha_emision TEXT,
+            fecha_vencimiento TEXT,
+            pagado INTEGER DEFAULT 0
+        )`,
+        `CREATE TABLE IF NOT EXISTS gastos_unidad (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            gasto_comun_id INTEGER,
+            unidad_id INTEGER,
+            monto_base REAL,
+            monto_total REAL,
+            pagado INTEGER DEFAULT 0,
+            fecha_pago TEXT
+        )`,
+        `CREATE TABLE IF NOT EXISTS espacios_comunes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            condominio_id INTEGER DEFAULT 1,
+            nombre TEXT,
+            descripcion TEXT,
+            capacidad INTEGER,
+            requiere_autorizacion INTEGER DEFAULT 0,
+            cobro_activo INTEGER DEFAULT 0,
+            horario_semana_inicio TEXT DEFAULT '10:00',
+            horario_semana_fin TEXT DEFAULT '22:00',
+            horario_festivo_inicio TEXT DEFAULT '10:00',
+            horario_festivo_fin TEXT DEFAULT '02:00',
+            costo_dia_semana REAL DEFAULT 0,
+            costo_dia_festivo REAL DEFAULT 0,
+            garantia REAL DEFAULT 0,
+            tiene_juegos_inflables INTEGER DEFAULT 0,
+            monto_extra_juegos REAL DEFAULT 0,
+            dias_festivos TEXT DEFAULT ''
+        )`,
+        `CREATE TABLE IF NOT EXISTS reservas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            espacio_id INTEGER,
+            unidad_id INTEGER,
+            fecha TEXT,
+            hora_inicio TEXT,
+            hora_fin TEXT,
+            motivo TEXT,
+            estado TEXT DEFAULT 'pendiente',
+            costo_total REAL DEFAULT 0,
+            tiene_extra INTEGER DEFAULT 0,
+            monto_extra REAL DEFAULT 0,
+            garantia_aplicada INTEGER DEFAULT 0,
+            garantia_cobrada INTEGER DEFAULT 0,
+            check_out TEXT
+        )`,
+        `CREATE TABLE IF NOT EXISTS multas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            unidad_id INTEGER,
+            fecha TEXT,
+            motivo TEXT,
+            monto REAL,
+            periodo TEXT,
+            pagado INTEGER DEFAULT 0,
+            fecha_pago TEXT
+        )`,
+        `CREATE TABLE IF NOT EXISTS bitacora (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tipo TEXT DEFAULT 'info',
+            descripcion TEXT,
+            fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
+            conserje_nombre TEXT
+        )`,
+        `CREATE TABLE IF NOT EXISTS encomiendas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            residente_id INTEGER,
+            remitente TEXT,
+            descripcion TEXT,
+            fecha_ingreso DATETIME DEFAULT CURRENT_TIMESTAMP,
+            fecha_retiro DATETIME,
+            estado TEXT DEFAULT 'pendiente'
+        )`,
+        `CREATE TABLE IF NOT EXISTS visitas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            visitante_nombre TEXT,
+            visitante_rut TEXT,
+            visitante_telefono TEXT,
+            motivo TEXT,
+            unidad_destino_id INTEGER,
+            placa_vehiculo TEXT,
+            fecha_entrada DATETIME DEFAULT CURRENT_TIMESTAMP,
+            fecha_salida DATETIME,
+            estado TEXT DEFAULT 'activa'
+        )`,
+        `CREATE TABLE IF NOT EXISTS comunicados (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            titulo TEXT,
+            contenido TEXT,
+            autor TEXT,
+            autor_rol TEXT DEFAULT 'admin',
+            destino TEXT DEFAULT '{"tipo":"todos"}',
+            adjunto_url TEXT,
+            adjunto_nombre TEXT,
+            fecha DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE TABLE IF NOT EXISTS equipos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT,
+            ubicacion TEXT,
+            tipo TEXT,
+            frecuencia_dias INTEGER DEFAULT 30,
+            proveedor TEXT,
+            contacto TEXT,
+            activo INTEGER DEFAULT 1
+        )`,
+        `CREATE TABLE IF NOT EXISTS mantenciones_programadas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            equipo_id INTEGER,
+            fecha_programada TEXT,
+            descripcion TEXT DEFAULT 'Mantención programada',
+            prioridad TEXT DEFAULT 'normal',
+            estado TEXT DEFAULT 'pendiente',
+            responsable TEXT,
+            fecha_realizacion TEXT,
+            observaciones TEXT
+        )`,
+        `CREATE TABLE IF NOT EXISTS config_edificio (
+            id INTEGER PRIMARY KEY DEFAULT 1,
+            nombre_edificio TEXT,
+            banco TEXT,
+            tipo_cuenta TEXT,
+            numero_cuenta TEXT,
+            rut_empresa TEXT,
+            email_contacto TEXT,
+            telefono_contacto TEXT,
+            instrucciones_pago TEXT
+        )`
+    ];
+
+    const categorias = ['Mantenimiento','Limpieza','Servicios','Seguridad','Seguro','Administracion','Otro'];
+
+    const runAsync = (sql, params = []) => new Promise((resolve, reject) => {
+        db.run(sql, params, function(err) { err ? reject(err) : resolve(this); });
+    });
+
+    try {
+        for (const sql of tablas) await runAsync(sql);
+
+        await runAsync(`INSERT OR IGNORE INTO config_edificio (id) VALUES (1)`);
+        for (const cat of categorias) {
+            await runAsync(`INSERT OR IGNORE INTO categorias_gastos (nombre) VALUES (?)`, [cat]);
+        }
+
+        const hash = await require('bcrypt').hash('admin123', 10);
+        await runAsync(`INSERT OR IGNORE INTO usuarios (email, password, rol) VALUES (?, ?, ?)`, ['admin@kubox.com', hash, 'admin']);
+
+        const hashC = await require('bcrypt').hash('conserje123', 10);
+        await runAsync(`INSERT OR IGNORE INTO usuarios (email, password, rol) VALUES (?, ?, ?)`, ['conserje@kubox.com', hashC, 'conserje']);
+
+        const hashJ = await require('bcrypt').hash('juan123', 10);
+        await runAsync(`INSERT OR IGNORE INTO usuarios (email, password, rol) VALUES (?, ?, ?)`, ['juan@kubox.com', hashJ, 'residente']);
+
+        res.json({
+            success: true,
+            message: 'Base de datos inicializada correctamente',
+            tablas_creadas: tablas.length,
+            usuarios: ['admin@kubox.com / admin123', 'conserje@kubox.com / conserje123', 'juan@kubox.com / juan123']
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ============================================
 // MOROSOS DETALLE (para ConserjeDashboard)
 // ============================================
 app.get('/api/morosos-detalle', (req, res) => {
