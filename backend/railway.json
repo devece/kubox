@@ -4,7 +4,6 @@
     "buildCommand": "npm install"
   },
   "deploy": {
-    "startCommand": "node index.js",
-    "postDeployCommand": "node crear-usuarios.js"
+    "startCommand": "node index.js"
   }
 }
