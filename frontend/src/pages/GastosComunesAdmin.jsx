@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { DollarSign, TrendingUp, Users, Plus, CheckCircle, XCircle, Trash2, Calendar } from 'lucide-react';
 
-const API = 'http://localhost:3001/api';
+const API = 'https://kubox-production-493b.up.railway.app/api';
 
 function GastosComunesAdmin() {
   const [gastos, setGastos] = useState([]);

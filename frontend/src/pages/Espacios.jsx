@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { Home, Plus, Trash2, Edit, DollarSign, Clock, Shield, Castle } from 'lucide-react';
 
-const API = 'http://localhost:3001/api';
+const API = 'https://kubox-production-493b.up.railway.app/api';
 
 function Espacios() {
   const [espacios, setEspacios] = useState([]);

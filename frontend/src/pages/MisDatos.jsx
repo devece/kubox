@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { User, Mail, Phone, Home, Save } from 'lucide-react';
 
-const API = 'http://localhost:3001/api';
+const API = 'https://kubox-production-493b.up.railway.app/api';
 
 function MisDatos({ residenteEmail }) {
   const [residente, setResidente] = useState(null);

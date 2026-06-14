@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Mail, Save, AlertCircle, CheckCircle, Building2 } from 'lucide-react';
 
-const API = 'http://localhost:3001/api';
+const API = 'https://kubox-production-493b.up.railway.app/api';
 
 export default function ConfiguracionEmail() {
   const [config, setConfig] = useState({ email_user: '', email_pass: '' });
@@ -22,39 +22,39 @@ export default function ConfiguracionEmail() {
         setConfigurado(!!res.data.email_user);
       }
     } catch (error) {
-      console.error('Error cargando configuración:', error);
+      console.error('Error cargando configuraciÃ³n:', error);
     }
   };
 
   const guardarConfig = async () => {
     if (!config.email_user || !config.email_pass) {
-      setMensaje('❌ Completa ambos campos');
+      setMensaje('âŒ Completa ambos campos');
       setTimeout(() => setMensaje(''), 3000);
       return;
     }
 
     try {
       await axios.post(`${API}/email-config`, config);
-      setMensaje('✅ Configuración guardada correctamente');
+      setMensaje('âœ… ConfiguraciÃ³n guardada correctamente');
       setConfigurado(true);
       setTimeout(() => setMensaje(''), 3000);
     } catch (error) {
-      setMensaje('❌ Error al guardar: ' + error.message);
+      setMensaje('âŒ Error al guardar: ' + error.message);
     }
   };
 
   const probarEnvio = async () => {
     if (!config.email_user) {
-      setMensaje('❌ Configura primero tu correo');
+      setMensaje('âŒ Configura primero tu correo');
       return;
     }
     setProbando(true);
     try {
       await axios.post(`${API}/email-test`, { email: config.email_user });
-      setMensaje('✅ Email de prueba enviado correctamente');
+      setMensaje('âœ… Email de prueba enviado correctamente');
       setTimeout(() => setMensaje(''), 3000);
     } catch (error) {
-      setMensaje('❌ Error al enviar prueba: ' + error.message);
+      setMensaje('âŒ Error al enviar prueba: ' + error.message);
     }
     setProbando(false);
   };
@@ -63,13 +63,13 @@ export default function ConfiguracionEmail() {
     <div className="space-y-6">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-white mb-2 flex items-center gap-2">
-          <Building2 size={28} /> Configuración del Condominio
+          <Building2 size={28} /> ConfiguraciÃ³n del Condominio
         </h1>
         <p className="text-white/70">Configura el correo corporativo para enviar notificaciones a los residentes</p>
       </div>
 
       {mensaje && (
-        <div className={`p-3 rounded-xl text-center ${mensaje.includes('✅') ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
+        <div className={`p-3 rounded-xl text-center ${mensaje.includes('âœ…') ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
           {mensaje}
         </div>
       )}
@@ -84,7 +84,7 @@ export default function ConfiguracionEmail() {
         <div className="space-y-4">
           <div>
             <label className="block text-white/70 text-sm mb-1 flex items-center gap-2">
-              <Mail size={16} /> Correo electrónico corporativo
+              <Mail size={16} /> Correo electrÃ³nico corporativo
             </label>
             <input
               type="email"
@@ -94,23 +94,23 @@ export default function ConfiguracionEmail() {
               onChange={e => setConfig({...config, email_user: e.target.value})}
             />
             <p className="text-xs text-white/40 mt-1">
-              Desde este correo se enviarán las notificaciones a los residentes
+              Desde este correo se enviarÃ¡n las notificaciones a los residentes
             </p>
           </div>
 
           <div>
             <label className="block text-white/70 text-sm mb-1 flex items-center gap-2">
-              🔐 Contraseña de aplicación
+              ðŸ” ContraseÃ±a de aplicaciÃ³n
             </label>
             <input
               type="password"
               className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Contraseña de aplicación"
+              placeholder="ContraseÃ±a de aplicaciÃ³n"
               value={config.email_pass}
               onChange={e => setConfig({...config, email_pass: e.target.value})}
             />
             <p className="text-xs text-white/40 mt-1">
-              Para Gmail, genera una <strong>"Contraseña de aplicación"</strong> en tu cuenta de Google
+              Para Gmail, genera una <strong>"ContraseÃ±a de aplicaciÃ³n"</strong> en tu cuenta de Google
             </p>
           </div>
 
@@ -118,11 +118,11 @@ export default function ConfiguracionEmail() {
             <p className="flex items-start gap-2">
               <AlertCircle size={16} className="mt-0.5" />
               <span>
-                <strong>📧 Configuración para correo corporativo:</strong><br />
-                1. Usa un correo específico del condominio (ej: cobros@edificiocentral.cl)<br />
-                2. Para Gmail, activa verificación en dos pasos y genera contraseña de aplicación<br />
-                3. Para Outlook/Hotmail, usa tu contraseña normal<br />
-                4. Prueba la configuración con el botón "Probar envío"
+                <strong>ðŸ“§ ConfiguraciÃ³n para correo corporativo:</strong><br />
+                1. Usa un correo especÃ­fico del condominio (ej: cobros@edificiocentral.cl)<br />
+                2. Para Gmail, activa verificaciÃ³n en dos pasos y genera contraseÃ±a de aplicaciÃ³n<br />
+                3. Para Outlook/Hotmail, usa tu contraseÃ±a normal<br />
+                4. Prueba la configuraciÃ³n con el botÃ³n "Probar envÃ­o"
               </span>
             </p>
           </div>
@@ -132,26 +132,26 @@ export default function ConfiguracionEmail() {
               onClick={guardarConfig}
               className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-2 rounded-xl font-medium shadow-lg hover:shadow-xl transition flex items-center gap-2"
             >
-              <Save size={18} /> Guardar configuración
+              <Save size={18} /> Guardar configuraciÃ³n
             </button>
             <button
               onClick={probarEnvio}
               disabled={probando}
               className="bg-gray-600 text-white px-6 py-2 rounded-xl font-medium hover:bg-gray-700 transition"
             >
-              {probando ? 'Enviando...' : '📧 Probar envío'}
+              {probando ? 'Enviando...' : 'ðŸ“§ Probar envÃ­o'}
             </button>
           </div>
         </div>
       </div>
 
       <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-6 border border-white/20">
-        <h3 className="text-lg font-semibold text-white mb-3">📬 Notificaciones automáticas</h3>
+        <h3 className="text-lg font-semibold text-white mb-3">ðŸ“¬ Notificaciones automÃ¡ticas</h3>
         <div className="space-y-2 text-white/70 text-sm">
-          <p>✅ <strong>Nuevo gasto común</strong> → Se envía a todos los residentes</p>
-          <p>✅ <strong>Pago registrado</strong> → Se envía confirmación al residente</p>
-          <p>✅ <strong>Comunicados</strong> → Se envían a los destinatarios seleccionados</p>
-          <p>✅ <strong>Recordatorio de vencimiento</strong> → Próximamente</p>
+          <p>âœ… <strong>Nuevo gasto comÃºn</strong> â†’ Se envÃ­a a todos los residentes</p>
+          <p>âœ… <strong>Pago registrado</strong> â†’ Se envÃ­a confirmaciÃ³n al residente</p>
+          <p>âœ… <strong>Comunicados</strong> â†’ Se envÃ­an a los destinatarios seleccionados</p>
+          <p>âœ… <strong>Recordatorio de vencimiento</strong> â†’ PrÃ³ximamente</p>
         </div>
       </div>
 
@@ -159,9 +159,9 @@ export default function ConfiguracionEmail() {
         <p className="flex items-start gap-2">
           <AlertCircle size={16} className="mt-0.5" />
           <span>
-            <strong>💡 Recomendación:</strong><br />
+            <strong>ðŸ’¡ RecomendaciÃ³n:</strong><br />
             Crea un correo exclusivo para el condominio como <strong>cobros@tucodominio.cl</strong> o <strong>administracion@tucodominio.cl</strong>.
-            Esto dará una imagen más profesional a los residentes.
+            Esto darÃ¡ una imagen mÃ¡s profesional a los residentes.
           </span>
         </p>
       </div>

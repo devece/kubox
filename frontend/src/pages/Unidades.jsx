@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { Building2, Users, Plus, Trash2, Edit, Eye } from 'lucide-react';
 
-const API = 'http://localhost:3001/api';
+const API = 'https://kubox-production-493b.up.railway.app/api';
 
 function Unidades({ soloLectura = false }) {
   const [unidades, setUnidades] = useState([]);

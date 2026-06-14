@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Plus, Trash2 } from 'lucide-react';
 
-const API = 'http://localhost:3001/api';
+const API = 'https://kubox-production-493b.up.railway.app/api';
 
 export default function GastosReales({ periodo, onGastoAgregado }) {
   const [categorias, setCategorias] = useState([]);
@@ -27,7 +27,7 @@ export default function GastosReales({ periodo, onGastoAgregado }) {
       const res = await axios.get(`${API}/categorias-gastos`);
       setCategorias(res.data || []);
     } catch (error) {
-      console.error('Error cargando categorías:', error);
+      console.error('Error cargando categorÃ­as:', error);
     }
   };
 
@@ -61,7 +61,7 @@ export default function GastosReales({ periodo, onGastoAgregado }) {
   };
 
   const eliminarGasto = async (id) => {
-    if (confirm('¿Eliminar este gasto?')) {
+    if (confirm('Â¿Eliminar este gasto?')) {
       await axios.delete(`${API}/gastos-reales/${id}`);
       cargarGastos();
       if (onGastoAgregado) onGastoAgregado();
@@ -73,7 +73,7 @@ export default function GastosReales({ periodo, onGastoAgregado }) {
   return (
     <div className="bg-white rounded-xl shadow p-4">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold">💰 Gastos del periodo {periodo}</h2>
+        <h2 className="text-xl font-semibold">ðŸ’° Gastos del periodo {periodo}</h2>
         <button onClick={() => setMostrarModal(true)} className="bg-blue-500 text-white px-3 py-1 rounded flex items-center gap-1">
           <Plus size={16} /> Agregar gasto
         </button>
@@ -88,11 +88,11 @@ export default function GastosReales({ periodo, onGastoAgregado }) {
         <table className="w-full text-sm">
           <thead className="bg-gray-100">
             <tr>
-              <th className="p-2 text-left">Categoría</th>
-              <th className="p-2 text-left">Descripción</th>
+              <th className="p-2 text-left">CategorÃ­a</th>
+              <th className="p-2 text-left">DescripciÃ³n</th>
               <th className="p-2 text-right">Monto</th>
               <th className="p-2 text-left">Fecha</th>
-              <th className="p-2 text-center">Acción</th>
+              <th className="p-2 text-center">AcciÃ³n</th>
             </tr>
           </thead>
           <tbody>
@@ -125,10 +125,10 @@ export default function GastosReales({ periodo, onGastoAgregado }) {
             <h2 className="text-xl font-bold mb-4">Agregar gasto</h2>
             <div className="space-y-3">
               <select className="w-full p-2 border rounded" value={formData.categoria_id} onChange={e => setFormData({...formData, categoria_id: e.target.value})}>
-                <option value="">Seleccionar categoría</option>
+                <option value="">Seleccionar categorÃ­a</option>
                 {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
               </select>
-              <input type="text" placeholder="Descripción" className="w-full p-2 border rounded" value={formData.descripcion} onChange={e => setFormData({...formData, descripcion: e.target.value})} />
+              <input type="text" placeholder="DescripciÃ³n" className="w-full p-2 border rounded" value={formData.descripcion} onChange={e => setFormData({...formData, descripcion: e.target.value})} />
               <input type="number" placeholder="Monto" className="w-full p-2 border rounded" value={formData.monto} onChange={e => setFormData({...formData, monto: e.target.value})} />
               <input type="date" className="w-full p-2 border rounded" value={formData.fecha} onChange={e => setFormData({...formData, fecha: e.target.value})} />
             </div>

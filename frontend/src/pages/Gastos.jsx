@@ -2,7 +2,7 @@
 import axios from "axios";
 import { DollarSign, Plus, Trash2, Edit, Calendar, CheckCircle, XCircle, Clock } from "lucide-react";
 
-const API = "http://localhost:3001/api";
+const API = "https://kubox-production-493b.up.railway.app/api";
 
 function Gastos({ user, soloLectura = false }) {
   const [gastos, setGastos] = useState([]);

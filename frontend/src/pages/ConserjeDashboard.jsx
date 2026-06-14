@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Users, AlertCircle, Home, DollarSign, Shield } from 'lucide-react';
 
-const API = 'http://localhost:3001/api';
+const API = 'https://kubox-production-493b.up.railway.app/api';
 
 export default function ConserjeDashboard() {
   const [dashboard, setDashboard] = useState({});
@@ -49,7 +49,7 @@ export default function ConserjeDashboard() {
     <div className="space-y-8">
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-white mb-2">Panel del Conserje</h1>
-        <p className="text-white/70">Bienvenido. Aquí puedes verificar el estado de los residentes</p>
+        <p className="text-white/70">Bienvenido. AquÃ­ puedes verificar el estado de los residentes</p>
       </div>
 
       {/* Tarjetas de resumen (solo lo necesario para conserje) */}
@@ -104,7 +104,7 @@ export default function ConserjeDashboard() {
                       <p className="text-red-400 font-bold">${(m.deuda_total || 0).toLocaleString()}</p>
                       <p className="text-xs text-white/50">{m.meses_moroso} meses moroso</p>
                       <span className="inline-block mt-2 text-xs bg-red-500/20 text-red-300 px-2 py-0.5 rounded-full">
-                        🚫 No puede reservar
+                        ðŸš« No puede reservar
                       </span>
                     </div>
                   </div>
@@ -115,12 +115,12 @@ export default function ConserjeDashboard() {
         </div>
       </div>
 
-      {/* Información para el conserje */}
+      {/* InformaciÃ³n para el conserje */}
       <div className="bg-blue-500/20 rounded-2xl p-4 border border-blue-300/20">
         <p className="text-blue-200 text-sm flex items-center gap-2">
           <Shield size={16} />
           <strong>Nota:</strong> Los residentes marcados como morosos no pueden hacer reservas de espacios comunes.
-          Si un residente regulariza su deuda, su estado se actualizará automáticamente.
+          Si un residente regulariza su deuda, su estado se actualizarÃ¡ automÃ¡ticamente.
         </p>
       </div>
     </div>

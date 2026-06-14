@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
   ClipboardList, Package, Users, Plus, Trash2, 
@@ -6,7 +6,7 @@ import {
   Eye, LogOut
 } from 'lucide-react';
 
-const API = 'http://localhost:3001/api';
+const API = 'https://kubox-production-493b.up.railway.app/api';
 
 export default function Conserjeria({ user }) {
   const [tab, setTab] = useState('bitacora');
@@ -94,7 +94,7 @@ export default function Conserjeria({ user }) {
       } else if (modalTipo === 'visita') {
         await axios.post(`${API}/visitas`, formData);
       }
-      alert('✅ Registro guardado correctamente');
+      alert('âœ… Registro guardado correctamente');
       setModalAbierto(false);
       cargarDatos();
     } catch (error) {
@@ -104,26 +104,26 @@ export default function Conserjeria({ user }) {
   };
 
   const marcarEntregado = async (id) => {
-    if (confirm('¿Marcar esta encomienda como entregada?')) {
+    if (confirm('Â¿Marcar esta encomienda como entregada?')) {
       await axios.put(`${API}/encomiendas/${id}/entregar`);
       cargarDatos();
-      alert('✅ Encomienda marcada como entregada');
+      alert('âœ… Encomienda marcada como entregada');
     }
   };
 
   const registrarSalida = async (id) => {
-    if (confirm('¿Registrar salida de esta visita?')) {
+    if (confirm('Â¿Registrar salida de esta visita?')) {
       await axios.put(`${API}/visitas/${id}/salir`);
       cargarDatos();
-      alert('✅ Salida registrada');
+      alert('âœ… Salida registrada');
     }
   };
 
   const eliminarRegistro = async (id, tipo) => {
-    if (confirm('¿Eliminar este registro?')) {
+    if (confirm('Â¿Eliminar este registro?')) {
       await axios.delete(`${API}/${tipo}/${id}`);
       cargarDatos();
-      alert('✅ Registro eliminado');
+      alert('âœ… Registro eliminado');
     }
   };
 
@@ -139,8 +139,8 @@ export default function Conserjeria({ user }) {
   return (
     <div className="space-y-6">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Conserjería</h1>
-        <p className="text-white/70">Gestión de bitácora, encomiendas y control de visitas</p>
+        <h1 className="text-3xl font-bold text-white mb-2">ConserjerÃ­a</h1>
+        <p className="text-white/70">GestiÃ³n de bitÃ¡cora, encomiendas y control de visitas</p>
       </div>
 
       {/* Tabs */}
@@ -149,7 +149,7 @@ export default function Conserjeria({ user }) {
           onClick={() => setTab('bitacora')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl transition ${tab === 'bitacora' ? 'bg-blue-500 text-white' : 'text-white/70 hover:bg-white/10'}`}
         >
-          <ClipboardList size={18} /> Bitácora
+          <ClipboardList size={18} /> BitÃ¡cora
         </button>
         <button
           onClick={() => setTab('encomiendas')}
@@ -165,7 +165,7 @@ export default function Conserjeria({ user }) {
         </button>
       </div>
 
-      {/* Botón agregar según tab */}
+      {/* BotÃ³n agregar segÃºn tab */}
       {puedeEditar && (
         <div className="flex justify-end">
           <button
@@ -179,7 +179,7 @@ export default function Conserjeria({ user }) {
       )}
 
       {/* ============================================ */}
-      {/* BITÁCORA */}
+      {/* BITÃCORA */}
       {/* ============================================ */}
       {tab === 'bitacora' && (
         <div className="space-y-3">
@@ -205,7 +205,7 @@ export default function Conserjeria({ user }) {
             </div>
           ))}
           {bitacora.length === 0 && (
-            <div className="text-center py-12 text-white/40">No hay entradas en la bitácora</div>
+            <div className="text-center py-12 text-white/40">No hay entradas en la bitÃ¡cora</div>
           )}
         </div>
       )}
@@ -272,13 +272,13 @@ export default function Conserjeria({ user }) {
                     {v.estado === 'activa' ? (
                       <span className="text-xs bg-green-500/20 text-green-300 px-2 py-0.5 rounded-full">En el edificio</span>
                     ) : (
-                      <span className="text-xs bg-gray-500/20 text-gray-300 px-2 py-0.5 rounded-full">Salió</span>
+                      <span className="text-xs bg-gray-500/20 text-gray-300 px-2 py-0.5 rounded-full">SaliÃ³</span>
                     )}
                   </div>
                   <p className="text-white/60 text-sm mt-1">Unidad destino: {v.unidad_numero || 'No especificada'}</p>
                   <p className="text-white/80 text-sm">Motivo: {v.motivo || 'No especificado'}</p>
                   {v.visitante_rut && <p className="text-white/40 text-xs">RUT: {v.visitante_rut}</p>}
-                  {v.placa_vehiculo && <p className="text-white/40 text-xs">Vehículo: {v.placa_vehiculo}</p>}
+                  {v.placa_vehiculo && <p className="text-white/40 text-xs">VehÃ­culo: {v.placa_vehiculo}</p>}
                   <p className="text-white/40 text-xs mt-1">Entrada: {new Date(v.fecha_entrada).toLocaleString()}</p>
                   {v.fecha_salida && <p className="text-white/40 text-xs">Salida: {new Date(v.fecha_salida).toLocaleString()}</p>}
                 </div>
@@ -310,7 +310,7 @@ export default function Conserjeria({ user }) {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
             <h2 className="text-xl font-bold mb-4">
-              {modalTipo === 'bitacora' && 'Nueva entrada en bitácora'}
+              {modalTipo === 'bitacora' && 'Nueva entrada en bitÃ¡cora'}
               {modalTipo === 'encomienda' && 'Registrar encomienda'}
               {modalTipo === 'visita' && 'Registrar visita'}
             </h2>
@@ -318,11 +318,11 @@ export default function Conserjeria({ user }) {
             {modalTipo === 'bitacora' && (
               <div className="space-y-3">
                 <select className="w-full p-2 border rounded-xl" value={formData.tipo} onChange={e => setFormData({...formData, tipo: e.target.value})}>
-                  <option value="info">Información</option>
+                  <option value="info">InformaciÃ³n</option>
                   <option value="alerta">Alerta</option>
                   <option value="incidencia">Incidencia</option>
                 </select>
-                <textarea placeholder="Descripción" className="w-full p-2 border rounded-xl" rows="3" value={formData.descripcion} onChange={e => setFormData({...formData, descripcion: e.target.value})} />
+                <textarea placeholder="DescripciÃ³n" className="w-full p-2 border rounded-xl" rows="3" value={formData.descripcion} onChange={e => setFormData({...formData, descripcion: e.target.value})} />
               </div>
             )}
 
@@ -337,7 +337,7 @@ export default function Conserjeria({ user }) {
                   ))}
                 </select>
                 <input type="text" placeholder="Remitente" className="w-full p-2 border rounded-xl" value={formData.remitente} onChange={e => setFormData({...formData, remitente: e.target.value})} />
-                <input type="text" placeholder="Descripción (paquete, tamaño, etc.)" className="w-full p-2 border rounded-xl" value={formData.descripcion} onChange={e => setFormData({...formData, descripcion: e.target.value})} />
+                <input type="text" placeholder="DescripciÃ³n (paquete, tamaÃ±o, etc.)" className="w-full p-2 border rounded-xl" value={formData.descripcion} onChange={e => setFormData({...formData, descripcion: e.target.value})} />
               </div>
             )}
 
@@ -345,7 +345,7 @@ export default function Conserjeria({ user }) {
               <div className="space-y-3">
                 <input type="text" placeholder="Nombre del visitante *" className="w-full p-2 border rounded-xl" value={formData.visitante_nombre} onChange={e => setFormData({...formData, visitante_nombre: e.target.value})} />
                 <input type="text" placeholder="RUT (opcional)" className="w-full p-2 border rounded-xl" value={formData.visitante_rut} onChange={e => setFormData({...formData, visitante_rut: e.target.value})} />
-                <input type="text" placeholder="Teléfono (opcional)" className="w-full p-2 border rounded-xl" value={formData.visitante_telefono} onChange={e => setFormData({...formData, visitante_telefono: e.target.value})} />
+                <input type="text" placeholder="TelÃ©fono (opcional)" className="w-full p-2 border rounded-xl" value={formData.visitante_telefono} onChange={e => setFormData({...formData, visitante_telefono: e.target.value})} />
                 <select className="w-full p-2 border rounded-xl" value={formData.unidad_destino_id} onChange={e => setFormData({...formData, unidad_destino_id: e.target.value})}>
                   <option value="">Seleccionar unidad destino</option>
                   {unidades.map(u => (
@@ -355,7 +355,7 @@ export default function Conserjeria({ user }) {
                   ))}
                 </select>
                 <input type="text" placeholder="Motivo de la visita" className="w-full p-2 border rounded-xl" value={formData.motivo} onChange={e => setFormData({...formData, motivo: e.target.value})} />
-                <input type="text" placeholder="Placa vehículo (opcional)" className="w-full p-2 border rounded-xl" value={formData.placa_vehiculo} onChange={e => setFormData({...formData, placa_vehiculo: e.target.value})} />
+                <input type="text" placeholder="Placa vehÃ­culo (opcional)" className="w-full p-2 border rounded-xl" value={formData.placa_vehiculo} onChange={e => setFormData({...formData, placa_vehiculo: e.target.value})} />
               </div>
             )}
 

@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { DollarSign, CheckCircle, XCircle, Building2, CreditCard, Phone, Mail, Info } from 'lucide-react';
 
-const API = 'http://localhost:3001/api';
+const API = 'https://kubox-production-493b.up.railway.app/api';
 
 function GastosComunesResidente({ residenteEmail }) {
   const [gastos, setGastos] = useState([]);

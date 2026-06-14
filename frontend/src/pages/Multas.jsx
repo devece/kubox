@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { AlertCircle, Plus, Trash2, Edit, DollarSign, CheckCircle, XCircle } from 'lucide-react';
 
-const API = 'http://localhost:3001/api';
+const API = 'https://kubox-production-493b.up.railway.app/api';
 
 function Multas({ user }) {
   const [multas, setMultas] = useState([]);

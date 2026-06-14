@@ -2,7 +2,7 @@
 import axios from "axios";
 import { Package, CheckCircle, Clock } from "lucide-react";
 
-const API = "http://localhost:3001/api";
+const API = "https://kubox-production-493b.up.railway.app/api";
 
 function EncomiendasResidente({ residenteEmail }) {
   const [encomiendas, setEncomiendas] = useState([]);

@@ -1,4 +1,4 @@
-import { useEditor, EditorContent } from '@tiptap/react';
+﻿import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import ImageExtension from '@tiptap/extension-image';
 import LinkExtension from '@tiptap/extension-link';
@@ -6,10 +6,10 @@ import TextAlign from '@tiptap/extension-text-align';
 import { Bold, Italic, List, ListOrdered, AlignLeft, AlignCenter, AlignRight, Image, Link, Paperclip } from 'lucide-react';
 import axios from 'axios';
 
-const API = 'http://localhost:3001/api';
+const API = 'https://kubox-production-493b.up.railway.app/api';
 const BACKEND_URL = 'http://localhost:3001';
 
-// Extensión de imagen personalizada
+// ExtensiÃ³n de imagen personalizada
 const CustomImage = ImageExtension.extend({
   addAttributes() {
     return {
@@ -39,7 +39,7 @@ const MenuBar = ({ editor, onAdjuntoChange }) => {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Por favor selecciona una imagen válida');
+      alert('Por favor selecciona una imagen vÃ¡lida');
       return;
     }
 
@@ -55,7 +55,7 @@ const MenuBar = ({ editor, onAdjuntoChange }) => {
         const fullUrl = `${BACKEND_URL}${res.data.url}`;
         console.log('Insertando imagen:', fullUrl);
         editor.chain().focus().setImage({ src: fullUrl }).run();
-        alert('✅ Imagen insertada correctamente');
+        alert('âœ… Imagen insertada correctamente');
       }
     } catch (error) {
       console.error('Error:', error);
@@ -79,7 +79,7 @@ const MenuBar = ({ editor, onAdjuntoChange }) => {
         if (onAdjuntoChange) {
           onAdjuntoChange({ url: fullUrl, nombre: res.data.nombre });
         }
-        alert('✅ Archivo adjunto subido: ' + res.data.nombre);
+        alert('âœ… Archivo adjunto subido: ' + res.data.nombre);
       }
     } catch (error) {
       console.error('Error:', error);
@@ -110,7 +110,7 @@ const MenuBar = ({ editor, onAdjuntoChange }) => {
         type="button"
         onClick={() => editor.chain().focus().toggleBulletList().run()}
         className={`p-1.5 rounded hover:bg-gray-200 transition ${editor.isActive('bulletList') ? 'bg-gray-200' : ''}`}
-        title="Lista con viñetas"
+        title="Lista con viÃ±etas"
       >
         <List size={16} />
       </button>
@@ -178,7 +178,7 @@ export default function EditorTexto({ value, onChange, placeholder, onAdjuntoCha
  const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        link: false,  // ← DESHABILITAR link de StarterKit para evitar duplicado
+        link: false,  // â† DESHABILITAR link de StarterKit para evitar duplicado
         bulletList: {
           keepMarks: true,
           keepAttributes: false,

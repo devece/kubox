@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { Calendar, Clock, User, Home, Plus, Castle } from 'lucide-react';
 
-const API = 'http://localhost:3001/api';
+const API = 'https://kubox-production-493b.up.railway.app/api';
 
 function Reservas({ user }) {
   const [reservas, setReservas] = useState([]);

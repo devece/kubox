@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { Shield, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 
-const API = 'http://localhost:3001/api';
+const API = 'https://kubox-production-493b.up.railway.app/api';
 
 function Garantias({ user }) {
   const [reservas, setReservas] = useState([]);

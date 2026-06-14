@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect } from 'react';
 import axios from 'axios';
 
-const API = 'http://localhost:3001/api';
+const API = 'https://kubox-production-493b.up.railway.app/api';
 
 function GastosComunesResidente({ residenteEmail }) {
   const [gastos, setGastos] = useState([]);

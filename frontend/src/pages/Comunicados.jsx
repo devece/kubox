@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Send, Eye, Trash2, Paperclip } from 'lucide-react';
 import EditorTexto from '../components/EditorTexto';
 
-const API = 'http://localhost:3001/api';
+const API = 'https://kubox-production-493b.up.railway.app/api';
 
 export default function Comunicados({ user }) {
   const [comunicados, setComunicados] = useState([]);
@@ -50,7 +50,7 @@ export default function Comunicados({ user }) {
 
   const enviarComunicado = async () => {
     if (!formData.titulo || !formData.contenido) {
-      alert('Completa el título y el contenido');
+      alert('Completa el tÃ­tulo y el contenido');
       return;
     }
 
@@ -67,7 +67,7 @@ export default function Comunicados({ user }) {
         adjunto_nombre: formData.adjunto_nombre
       };
       await axios.post(`${API}/comunicados`, payload);
-      alert('✅ Comunicado enviado correctamente');
+      alert('âœ… Comunicado enviado correctamente');
       setModalAbierto(false);
       setFormData({ 
         titulo: '', contenido: '', destinatarios: 'todos', 
@@ -81,11 +81,11 @@ export default function Comunicados({ user }) {
   };
 
   const eliminarComunicado = async (id) => {
-    if (confirm('¿Eliminar este comunicado?')) {
+    if (confirm('Â¿Eliminar este comunicado?')) {
       try {
         await axios.delete(`${API}/comunicados/${id}`);
         cargarComunicados();
-        alert('✅ Comunicado eliminado');
+        alert('âœ… Comunicado eliminado');
       } catch (error) {
         alert('Error al eliminar: ' + error.message);
       }
@@ -108,7 +108,7 @@ export default function Comunicados({ user }) {
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">Comunicados</h1>
-          <p className="text-white/70">Gestiona la comunicación con los residentes</p>
+          <p className="text-white/70">Gestiona la comunicaciÃ³n con los residentes</p>
         </div>
         {puedeEnviar && (
           <button
@@ -128,7 +128,7 @@ export default function Comunicados({ user }) {
 
       <div className="space-y-4">
         {comunicados.length === 0 ? (
-          <div className="text-center py-12 text-white/40">No hay comunicados aún</div>
+          <div className="text-center py-12 text-white/40">No hay comunicados aÃºn</div>
         ) : (
           comunicados.map(c => (
             <div key={c.id} className="bg-white/10 backdrop-blur-xl rounded-2xl border border-white/20 overflow-hidden hover:bg-white/15 transition">
@@ -139,7 +139,7 @@ export default function Comunicados({ user }) {
                     <div className="flex items-center gap-3 mt-1">
                       <span className="text-xs text-white/40">{new Date(c.fecha).toLocaleString()}</span>
                       <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full">
-                        {c.autor_rol === 'admin' ? 'Administración' : 'Comité'}
+                        {c.autor_rol === 'admin' ? 'AdministraciÃ³n' : 'ComitÃ©'}
                       </span>
                       <span className="text-xs bg-gray-500/20 text-gray-300 px-2 py-0.5 rounded-full">
                         {getDestinatariosTexto(c.destinatarios)}
@@ -173,12 +173,12 @@ export default function Comunicados({ user }) {
                           className="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300 text-sm"
                         >
                           <Paperclip size={14} />
-                          📎 Adjunto: {c.adjunto_nombre || 'Descargar archivo'}
+                          ðŸ“Ž Adjunto: {c.adjunto_nombre || 'Descargar archivo'}
                         </a>
                       </div>
                     )}
                     <div className="mt-3 text-xs text-white/40 border-t border-white/10 pt-3">
-                      Enviado por: {c.autor} ({c.autor_rol === 'admin' ? 'Administrador' : 'Comité'})
+                      Enviado por: {c.autor} ({c.autor_rol === 'admin' ? 'Administrador' : 'ComitÃ©'})
                     </div>
                   </div>
                 )}
@@ -197,7 +197,7 @@ export default function Comunicados({ user }) {
             <div className="space-y-4">
               <input
                 type="text"
-                placeholder="Título del comunicado"
+                placeholder="TÃ­tulo del comunicado"
                 className="w-full px-4 py-2 border border-gray-200 rounded-xl"
                 value={formData.titulo}
                 onChange={e => setFormData({...formData, titulo: e.target.value})}
@@ -212,7 +212,7 @@ export default function Comunicados({ user }) {
                 >
                   <option value="todos">Todos los residentes</option>
                   <option value="morosos">Solo residentes morosos</option>
-                  <option value="seleccionados">Seleccionar residentes específicos</option>
+                  <option value="seleccionados">Seleccionar residentes especÃ­ficos</option>
                 </select>
               </div>
 

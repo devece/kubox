@@ -2,7 +2,7 @@
 import axios from "axios";
 import { Calendar, Wrench, CheckCircle, Clock, Plus, Eye } from "lucide-react";
 
-const API = "http://localhost:3001/api";
+const API = "https://kubox-production-493b.up.railway.app/api";
 
 function Mantenimiento({ user, soloLectura = false }) {
   const [equipos, setEquipos] = useState([]);

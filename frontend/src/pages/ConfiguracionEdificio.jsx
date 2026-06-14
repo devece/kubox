@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { Building2, CreditCard, Phone, Mail, Save, Edit } from 'lucide-react';
 
-const API = 'http://localhost:3001/api';
+const API = 'https://kubox-production-493b.up.railway.app/api';
 
 function ConfiguracionEdificio() {
   const [config, setConfig] = useState({
