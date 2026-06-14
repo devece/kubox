@@ -24,7 +24,7 @@ import ConfiguracionEdificio from './pages/ConfiguracionEdificio';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Filler);
 
-const API = 'http://localhost:3001/api';
+const API = 'https://kubox-production-493b.up.railway.app/api';
 
 function Dashboard({ esSoloLectura = false }) {
   const [dashboard, setDashboard] = useState({});
