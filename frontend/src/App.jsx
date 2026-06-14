@@ -231,8 +231,9 @@ function Login({ onLogin }) {
         <div className="mt-4 text-center text-xs text-white/40 space-y-1">
           <p className="font-semibold text-white/60 mb-1">Credenciales de prueba:</p>
           <p>Admin: admin@kubox.com / admin123</p>
+          <p>Comité: comite@kubox.com / 123456</p>
           <p>Conserje: conserje@kubox.com / conserje123</p>
-          <p>Juan: juan@kubox.com / juan123</p>
+          <p>Residente: juan@kubox.com / juan123</p>
         </div>
       </div>
     </div>
